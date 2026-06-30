@@ -16,6 +16,10 @@ incrementally.
 M-x promptu
 ```
 
+<p align="center">
+  <img src="screenshot.png" alt="promptu transient menu showing blocks, controls, and a live preview" width="300">
+</p>
+
 Pick building blocks one at a time. The menu stays open and shows a live
 preview as blocks accumulate. Blocks can prompt for runtime values and can be
 negated. Press `RET` to copy the composed prompt to the kill ring, then paste
