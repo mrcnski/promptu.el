@@ -1,14 +1,12 @@
+<div align="center">
+  <img src="mascot.svg" alt="promptu mascot — a friendly creature built from stacked prompt blocks" width="180"/>
+
 # promptu
 
-<p align="center">
-  <img src="mascot.svg" alt="promptu mascot — a friendly creature built from stacked prompt blocks" width="180">
-</p>
+Compose LLM prompts from building blocks, using a convenient transient menu interface!
 
-Compose LLM prompts from building blocks. A small Emacs package with a
-[transient](https://github.com/magit/transient) menu that builds a prompt
-incrementally.
-
-*promptu: the opposite of 'impromptu': composed, not off-the-cuff.*
+*The opposite of 'impromptu': composed, not off-the-cuff.*
+</div>
 
 ## Usage
 
@@ -16,9 +14,7 @@ incrementally.
 M-x promptu
 ```
 
-<p align="center">
-  <img src="screenshot.png" alt="promptu transient menu showing blocks, controls, and a live preview" width="300">
-</p>
+<img src="screenshot.png" alt="promptu transient menu showing blocks, controls, and a live preview" width="300">
 
 Pick building blocks one at a time. The menu stays open and shows a live
 preview as blocks accumulate. Blocks can prompt for runtime values and can be
