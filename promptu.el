@@ -42,6 +42,7 @@
 ;;   <block keys>  add that block
 ;;   -             arm "negate next" (the next block added is negated)
 ;;   DEL           remove the most recently added block
+;;   M-e           edit the most recently added block in the minibuffer
 ;;   RET           finish: copy the composed prompt to the kill ring
 ;;   q / C-g       abort with no output
 ;;
@@ -73,7 +74,7 @@
 Each block is a plist with these keys:
 
   :key          string, the transient trigger key (must avoid the
-                reserved keys -, RET, DEL, q).
+                reserved keys -, RET, DEL, M-e, q).
   :desc         string, the short menu description.
   :text         string, the affirmative text emitted into the prompt.
                 May contain named placeholders written as {name}.
@@ -200,6 +201,16 @@ Safe no-op when the session is empty."
   (when promptu--session
     (setq promptu--session (butlast promptu--session))))
 
+(defun promptu--edit-last ()
+  "Edit the most recently added block's text in the minibuffer.
+Pre-fills the minibuffer with the current last entry and replaces it
+with the edited value.  Safe no-op when the session is empty."
+  (interactive)
+  (when promptu--session
+    (let ((edited (read-string "Edit: " (car (last promptu--session)))))
+      (setq promptu--session
+            (append (butlast promptu--session) (list edited))))))
+
 (defun promptu--toggle-negate ()
   "Toggle the negate-next flag."
   (interactive)
@@ -220,7 +231,7 @@ A no-op (no kill-ring change) when the session is empty."
 
 ;;; Transient menu
 
-(defconst promptu--reserved-keys '("-" "RET" "DEL" "q")
+(defconst promptu--reserved-keys '("-" "RET" "DEL" "M-e" "q")
   "Keys reserved for menu control; block keys must avoid these.")
 
 (defun promptu--reserved-key-p (key)
@@ -295,6 +306,7 @@ description-derived command symbol."
   ["Controls"
    ("-"   "negate next" promptu--toggle-negate :transient t)
    ("DEL" "remove last" promptu--remove-last   :transient t)
+   ("M-e" "edit last"   promptu--edit-last      :transient t)
    ("q"   "abort"       transient-quit-one)]
   [:description promptu--preview
    ("RET" "finish (copy)" promptu--finish)]

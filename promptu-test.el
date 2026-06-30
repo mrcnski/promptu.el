@@ -163,6 +163,33 @@
    (promptu--remove-last)
    (should (null promptu--session))))
 
+(ert-deftest promptu-edit-last-replaces-last-entry ()
+  (promptu-test--with-session
+   (promptu--add '(:text "a"))
+   (promptu--add '(:text "b"))
+   (cl-letf (((symbol-function 'read-string) (lambda (&rest _) "B-edited")))
+     (promptu--edit-last))
+   (should (equal promptu--session '("a" "B-edited")))))
+
+(ert-deftest promptu-edit-last-prefills-current-value ()
+  "The minibuffer is pre-filled with the current last entry."
+  (promptu-test--with-session
+   (promptu--add '(:text "original"))
+   (let (seen-initial)
+     (cl-letf (((symbol-function 'read-string)
+                (lambda (_prompt &optional initial &rest _)
+                  (setq seen-initial initial)
+                  "kept")))
+       (promptu--edit-last))
+     (should (equal seen-initial "original")))))
+
+(ert-deftest promptu-edit-last-empty-noop ()
+  (promptu-test--with-session
+   (cl-letf (((symbol-function 'read-string)
+              (lambda (&rest _) (error "should not prompt on empty session"))))
+     (promptu--edit-last))
+   (should (null promptu--session))))
+
 (ert-deftest promptu-toggle-negate ()
   (promptu-test--with-session
    (promptu--toggle-negate)
@@ -251,6 +278,7 @@
   (should (promptu--reserved-key-p "-"))
   (should (promptu--reserved-key-p "RET"))
   (should (promptu--reserved-key-p "DEL"))
+  (should (promptu--reserved-key-p "M-e"))
   (should (promptu--reserved-key-p "q"))
   (should-not (promptu--reserved-key-p "p"))
   (should-not (promptu--reserved-key-p "i")))
