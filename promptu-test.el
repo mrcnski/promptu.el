@@ -279,6 +279,7 @@
   (should (promptu--reserved-key-p "RET"))
   (should (promptu--reserved-key-p "DEL"))
   (should (promptu--reserved-key-p "M-e"))
+  (should (promptu--reserved-key-p "M-E"))
   (should (promptu--reserved-key-p "M-p"))
   (should (promptu--reserved-key-p "M-n"))
   (should (promptu--reserved-key-p "M-r"))
@@ -453,6 +454,38 @@
             (promptu--history-ensure-loaded)
             (should (equal promptu-history '(("a" "b") ("c"))))))
       (delete-file file))))
+
+;;; Editing the whole prompt
+
+(ert-deftest promptu-strip-line-prefix-removes-bullet ()
+  (let ((promptu-separator "\n- "))
+    (should (equal (promptu--strip-line-prefix "- a\n- b") "a\n- b"))))
+
+(ert-deftest promptu-strip-line-prefix-absent-noop ()
+  "Text that does not start with the line prefix is returned unchanged."
+  (let ((promptu-separator "\n- "))
+    (should (equal (promptu--strip-line-prefix "a\n- b") "a\n- b"))))
+
+(ert-deftest promptu-strip-line-prefix-inline-separator-noop ()
+  "A separator with no line prefix strips nothing."
+  (let ((promptu-separator ", "))
+    (should (equal (promptu--strip-line-prefix "a, b, c") "a, b, c"))))
+
+(ert-deftest promptu-edit-round-trips-composed-prompt ()
+  "Stripping the prefix and recomposing as one entry returns the original."
+  (let* ((promptu-separator "\n- ")
+         (session '("review your changes" "commit" "don't push"))
+         (composed (promptu--compose session))
+         (entry (promptu--strip-line-prefix composed)))
+    (should (equal (promptu--compose (list entry)) composed))))
+
+(ert-deftest promptu-edit-collapses-multiline-into-one-entry ()
+  "A multi-line edit becomes a single entry, preserving inner newlines."
+  (let* ((promptu-separator "\n- ")
+         (text "- review\n- here is an error:\nTraceback\nValueError: x")
+         (entry (promptu--strip-line-prefix text)))
+    (should (equal entry "review\n- here is an error:\nTraceback\nValueError: x"))
+    (should (equal (promptu--compose (list entry)) text))))
 
 (provide 'promptu-test)
 

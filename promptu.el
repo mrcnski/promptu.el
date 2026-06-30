@@ -50,6 +50,7 @@
 ;;   -             arm "negate next" (the next block added is negated)
 ;;   DEL           remove the most recently added block
 ;;   M-e           edit the most recently added block in the minibuffer
+;;   M-E           edit the whole prompt as free text (saved as one entry)
 ;;   M-p           recall an older prompt from history
 ;;   M-n           recall a newer prompt (or return to the in-progress draft)
 ;;   M-r           browse history and load a past prompt
@@ -394,6 +395,98 @@ for reusing a prompt without opening the `promptu' menu."
     (kill-new (promptu--compose session))
     (message "promptu: copied recalled prompt to kill ring")))
 
+;;; Editing the whole prompt
+
+(defconst promptu--edit-buffer-name "*promptu prompt*"
+  "Name of the buffer used to edit the entire running prompt.")
+
+(defvar-local promptu--edit-window-config nil
+  "Window configuration to restore when the prompt-edit buffer closes.")
+
+(defvar promptu-edit-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "C-c C-c") #'promptu--edit-commit)
+    (define-key map (kbd "C-c C-k") #'promptu--edit-abort)
+    map)
+  "Keymap for `promptu-edit-mode'.")
+
+(define-derived-mode promptu-edit-mode text-mode "Promptu-Edit"
+  "Major mode for editing the entire running promptu prompt as free text.
+Saving replaces the running prompt with the buffer's contents as a single
+entry, discarding the previous block-by-block breakdown."
+  (setq header-line-format
+        (substitute-command-keys
+         (concat "Editing the whole prompt.  "
+                 "\\[promptu--edit-commit] save as one entry (replaces all), "
+                 "\\[promptu--edit-abort] cancel."))))
+
+(defun promptu--strip-line-prefix (text)
+  "Remove a single leading `promptu-separator' line prefix from TEXT.
+`promptu--compose' prepends the separator's trailing line prefix (e.g.
+\"- \") to the prompt's first line; stripping it here lets the edited
+text round-trip back through `promptu--compose' as a single entry.
+Returns TEXT unchanged when the separator has no line prefix or TEXT
+does not start with it."
+  (let ((prefix (promptu--line-prefix promptu-separator)))
+    (if (and (not (string-empty-p prefix))
+             (string-prefix-p prefix text))
+        (substring text (length prefix))
+      text)))
+
+(defun promptu--edit-prompt ()
+  "Edit the entire running prompt as free text in a dedicated buffer.
+The buffer is pre-filled with the composed prompt, so any part -- not
+just the last entry -- can be edited or deleted, and multi-line text
+\(such as a pasted error) can be added freely.  Saving collapses the
+whole prompt into a single entry.  Safe no-op when the session is empty."
+  (interactive)
+  (if (null promptu--session)
+      (message "promptu: nothing to edit")
+    ;; Open after this command returns and the transient has torn down, so
+    ;; transient's own window-configuration restore does not clobber the
+    ;; edit window.
+    (run-at-time 0 nil #'promptu--edit-open)))
+
+(defun promptu--edit-open ()
+  "Pop up the prompt-edit buffer pre-filled with the running prompt."
+  (let ((config (current-window-configuration))
+        (buf (get-buffer-create promptu--edit-buffer-name)))
+    (with-current-buffer buf
+      (promptu-edit-mode)
+      (erase-buffer)
+      (insert (promptu--compose promptu--session))
+      (goto-char (point-min))
+      (setq promptu--edit-window-config config))
+    (pop-to-buffer buf)))
+
+(defun promptu--edit-commit ()
+  "Replace the running prompt with the buffer text and return to the menu.
+The whole prompt becomes a single entry, discarding the previous
+block-by-block breakdown; `C-c C-c' is itself the confirmation.  A blank
+buffer leaves the session unchanged."
+  (interactive)
+  (let ((text (string-trim (buffer-string)))
+        (config promptu--edit-window-config))
+    (if (string-blank-p text)
+        (message "promptu: prompt is empty; nothing saved")
+      (setq promptu--session (list (promptu--strip-line-prefix text))
+            promptu--history-index nil)
+      (promptu--edit-finish config))))
+
+(defun promptu--edit-abort ()
+  "Discard the edit and return to the menu unchanged."
+  (interactive)
+  (promptu--edit-finish promptu--edit-window-config))
+
+(defun promptu--edit-finish (config)
+  "Kill the edit buffer, restore window CONFIG, and reopen the promptu menu."
+  (let ((buf (current-buffer)))
+    (when (window-configuration-p config)
+      (set-window-configuration config))
+    (when (buffer-live-p buf)
+      (kill-buffer buf)))
+  (transient-setup 'promptu))
+
 ;;; Finalize and abort
 
 (defun promptu--finish ()
@@ -410,7 +503,7 @@ A no-op (no kill-ring change) when the session is empty."
 
 ;;; Transient menu
 
-(defconst promptu--reserved-keys '("-" "RET" "DEL" "M-e" "M-p" "M-n" "M-r" "q")
+(defconst promptu--reserved-keys '("-" "RET" "DEL" "M-e" "M-E" "M-p" "M-n" "M-r" "q")
   "Keys reserved for menu control; block keys must avoid these.")
 
 (defun promptu--reserved-key-p (key)
@@ -486,6 +579,7 @@ description-derived command symbol."
    ("-"   "negate next" promptu--toggle-negate :transient t)
    ("DEL" "remove last" promptu--remove-last   :transient t)
    ("M-e" "edit last"   promptu--edit-last      :transient t)
+   ("M-E" "edit prompt" promptu--edit-prompt)
    ("q"   "abort"       transient-quit-one)]
   ["History"
    ("M-p" "older"  promptu--history-prev :transient t)

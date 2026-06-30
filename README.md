@@ -33,6 +33,7 @@ it into your agent (e.g. `agent-shell`) or anywhere else.
 | `-`       | Arm "negate next" — the next block added is negated  |
 | `DEL`     | Remove the most recently added block                |
 | `M-e`     | Edit the most recently added block in the minibuffer |
+| `M-E`     | Edit the whole prompt as free text (saved as one entry) |
 | `M-p`     | Recall an older prompt from history                 |
 | `M-n`     | Recall a newer prompt (or return to your draft)     |
 | `M-r`     | Browse history and load a past prompt               |
@@ -41,6 +42,16 @@ it into your agent (e.g. `agent-shell`) or anywhere else.
 
 Negation emits a block's explicit negative text when it defines one, otherwise
 its affirmative text prefixed with `promptu-negation-prefix` (default `don't `).
+
+### Editing the whole prompt
+
+`M-e` and `DEL` act on the most recent entry only. To edit or delete *any*
+part of the prompt, or to paste in multi-line text like an error message,
+press `M-E` to open the whole prompt in a buffer as free text. Edit freely,
+then `C-c C-c` to save or `C-c C-k` to cancel.
+
+**Note:** Saving replaces the prompt with the buffer's contents as a single
+entry, so the previous block-by-block breakdown is discarded.
 
 ### History
 
