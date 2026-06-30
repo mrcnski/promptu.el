@@ -279,9 +279,180 @@
   (should (promptu--reserved-key-p "RET"))
   (should (promptu--reserved-key-p "DEL"))
   (should (promptu--reserved-key-p "M-e"))
+  (should (promptu--reserved-key-p "M-p"))
+  (should (promptu--reserved-key-p "M-n"))
+  (should (promptu--reserved-key-p "M-r"))
   (should (promptu--reserved-key-p "q"))
   (should-not (promptu--reserved-key-p "p"))
   (should-not (promptu--reserved-key-p "i")))
+
+;;; History
+
+(defmacro promptu-test--with-history (&rest body)
+  "Run BODY with a fresh, isolated promptu history and session."
+  `(let ((promptu-history nil)
+         (promptu-history-max 50)
+         (promptu-history-file nil)
+         (promptu--history-loaded t)
+         (promptu--history-index nil)
+         (promptu--history-stash nil)
+         (promptu--session nil)
+         (promptu--negate-next nil)
+         (promptu-negation-prefix "don't ")
+         (promptu-separator "\n- "))
+     ,@body))
+
+(ert-deftest promptu-history-finish-records-session ()
+  "Finishing pushes the session (a list of strings) onto history."
+  (promptu-test--with-history
+   (let ((kill-ring nil) (kill-ring-yank-pointer nil))
+     (setq promptu--session '("review your changes" "commit"))
+     (promptu--finish)
+     (should (equal promptu-history '(("review your changes" "commit")))))))
+
+(ert-deftest promptu-history-add-dedup-moves-to-front ()
+  (promptu-test--with-history
+   (promptu--history-add '("a"))
+   (promptu--history-add '("b"))
+   (promptu--history-add '("a"))
+   (should (equal promptu-history '(("a") ("b"))))))
+
+(ert-deftest promptu-history-add-truncates-to-max ()
+  (promptu-test--with-history
+   (setq promptu-history-max 2)
+   (promptu--history-add '("a"))
+   (promptu--history-add '("b"))
+   (promptu--history-add '("c"))
+   (should (equal promptu-history '(("c") ("b"))))))
+
+(ert-deftest promptu-history-add-empty-noop ()
+  (promptu-test--with-history
+   (promptu--history-add nil)
+   (should (null promptu-history))))
+
+(ert-deftest promptu-history-stores-session-not-composed-text ()
+  "History keeps the block list, so recall recomposes with the live separator."
+  (promptu-test--with-history
+   (setq promptu-history '(("a" "b")))
+   (let ((promptu-separator " | "))
+     (should (equal (promptu--compose (car promptu-history)) "a | b")))))
+
+(ert-deftest promptu-history-prev-steps-older-and-clamps ()
+  (promptu-test--with-history
+   (setq promptu-history '(("new") ("mid") ("old")))
+   (promptu--history-prev)
+   (should (equal promptu--session '("new")))
+   (should (equal promptu--history-index 0))
+   (promptu--history-prev)
+   (should (equal promptu--session '("mid")))
+   (promptu--history-prev)
+   (should (equal promptu--session '("old")))
+   (promptu--history-prev)               ; clamp at oldest
+   (should (equal promptu--session '("old")))
+   (should (equal promptu--history-index 2))))
+
+(ert-deftest promptu-history-next-restores-in-progress-session ()
+  (promptu-test--with-history
+   (setq promptu-history '(("new") ("old"))
+         promptu--session '("draft"))
+   (promptu--history-prev)               ; stash ("draft"), load ("new")
+   (should (equal promptu--session '("new")))
+   (promptu--history-prev)               ; ("old")
+   (should (equal promptu--session '("old")))
+   (promptu--history-next)               ; back to ("new")
+   (should (equal promptu--session '("new")))
+   (promptu--history-next)               ; back to the stashed draft
+   (should (equal promptu--session '("draft")))
+   (should (null promptu--history-index))))
+
+(ert-deftest promptu-history-prev-empty-noop ()
+  (promptu-test--with-history
+   (promptu--history-prev)
+   (should (null promptu--session))
+   (should (null promptu--history-index))))
+
+(ert-deftest promptu-history-next-not-navigating-noop ()
+  (promptu-test--with-history
+   (setq promptu--session '("x"))
+   (promptu--history-next)
+   (should (equal promptu--session '("x")))
+   (should (null promptu--history-index))))
+
+(ert-deftest promptu-history-add-clears-navigation-index ()
+  "Adding a block after recalling leaves history navigation."
+  (promptu-test--with-history
+   (setq promptu-history '(("new") ("old")))
+   (promptu--history-prev)
+   (should (equal promptu--history-index 0))
+   (promptu--add '(:text "extra"))
+   (should (null promptu--history-index))
+   (should (equal promptu--session '("new" "extra")))))
+
+(ert-deftest promptu-history-remove-last-clears-index ()
+  (promptu-test--with-history
+   (setq promptu-history '(("a" "b")))
+   (promptu--history-prev)
+   (promptu--remove-last)
+   (should (null promptu--history-index))
+   (should (equal promptu--session '("a")))))
+
+(ert-deftest promptu-history-pick-loads-session ()
+  (promptu-test--with-history
+   (setq promptu-history '(("a" "b") ("c")))
+   (cl-letf (((symbol-function 'completing-read)
+              (lambda (&rest _) (promptu--compose '("a" "b")))))
+     (promptu--history-pick))
+   (should (equal promptu--session '("a" "b")))
+   (should (null promptu--history-index))))
+
+(ert-deftest promptu-recall-copies-with-current-separator ()
+  (promptu-test--with-history
+   (setq promptu-history '(("review your changes" "commit")))
+   (let ((kill-ring nil) (kill-ring-yank-pointer nil)
+         (promptu-separator ", "))
+     (cl-letf (((symbol-function 'completing-read)
+                (lambda (&rest _) "review your changes, commit")))
+       (promptu-recall))
+     (should (equal (current-kill 0) "review your changes, commit")))))
+
+(ert-deftest promptu-history-read-empty-returns-nil ()
+  (promptu-test--with-history
+   (cl-letf (((symbol-function 'completing-read)
+              (lambda (&rest _) (error "should not prompt on empty history"))))
+     (should (null (promptu--history-read))))))
+
+(ert-deftest promptu-history-reset-keeps-data-clears-nav ()
+  (promptu-test--with-history
+   (setq promptu-history '(("a"))
+         promptu--history-index 0
+         promptu--history-stash '("draft"))
+   (promptu--reset)
+   (should (equal promptu-history '(("a"))))
+   (should (null promptu--history-index))
+   (should (null promptu--history-stash))))
+
+(ert-deftest promptu-history-no-file-no-load ()
+  "With no file configured, ensure-loaded leaves history untouched."
+  (let ((promptu-history-file nil)
+        (promptu--history-loaded nil)
+        (promptu-history '(("kept"))))
+    (promptu--history-ensure-loaded)
+    (should (equal promptu-history '(("kept"))))))
+
+(ert-deftest promptu-history-persists-to-disk ()
+  "Saving then loading round-trips the history through a file."
+  (let* ((file (make-temp-file "promptu-history-"))
+         (promptu-history-file file)
+         (promptu-history-max 50))
+    (unwind-protect
+        (progn
+          (let ((promptu-history '(("a" "b") ("c"))))
+            (promptu--history-save))
+          (let ((promptu-history nil)
+                (promptu--history-loaded nil))
+            (promptu--history-ensure-loaded)
+            (should (equal promptu-history '(("a" "b") ("c"))))))
+      (delete-file file))))
 
 (provide 'promptu-test)
 

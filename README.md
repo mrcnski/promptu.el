@@ -32,11 +32,30 @@ it into your agent (e.g. `agent-shell`) or anywhere else.
 | _block_   | Add that block to the prompt                         |
 | `-`       | Arm "negate next" — the next block added is negated  |
 | `DEL`     | Remove the most recently added block                |
+| `M-e`     | Edit the most recently added block in the minibuffer |
+| `M-p`     | Recall an older prompt from history                 |
+| `M-n`     | Recall a newer prompt (or return to your draft)     |
+| `M-r`     | Browse history and load a past prompt               |
 | `RET`     | Finish: copy the composed prompt to the kill ring   |
 | `q` / `C-g` | Abort with no output and no kill-ring change      |
 
 Negation emits a block's explicit negative text when it defines one, otherwise
 its affirmative text prefixed with `promptu-negation-prefix` (default `don't `).
+
+### History
+
+Every finished prompt is remembered. Inside the menu, step back through past
+prompts with `M-p` / `M-n` like shell history, or browse them with `M-r`. A
+recalled prompt becomes the live session: you can keep editing it, or step
+forward with `M-n` to return to the draft you were building.
+
+To grab a past prompt without opening the menu:
+
+```
+M-x promptu-recall
+```
+
+It picks a past prompt and copies it straight to the kill ring.
 
 ## Example
 
@@ -75,6 +94,24 @@ Other options:
   block, so the default produces a fully bulleted list.
 - `promptu-negation-prefix` (default `"don't "`): used for negated blocks
   with no explicit `:negative` text.
+- `promptu-history-max` (default `50`): how many past prompts to keep. Set to
+  `nil` for unbounded history.
+- `promptu-history-file` (default `nil`): where to persist history. When `nil`,
+  history lives only in the current Emacs session, like the kill ring.
+
+### Persisting history across sessions
+
+History is in-memory by default. To keep it across Emacs restarts, point
+`promptu-history-file` at a file:
+
+```elisp
+(setq promptu-history-file
+      (expand-file-name "promptu-history.el" user-emacs-directory))
+```
+
+It is loaded on first use and saved after each finished prompt. Note that
+composed prompts can include values you typed for placeholders, so enabling
+this writes those values to the file in plain text.
 
 ## Installation
 
