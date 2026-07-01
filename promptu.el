@@ -393,9 +393,13 @@ Safe no-op when the session is empty."
               (concat "Editing the last entry.  "
                       "\\[promptu--edit-commit] save, "
                       "\\[promptu--edit-abort] cancel."))))
-        (promptu--replace-last-entry
-         (promptu--strip-surrounding-newlines (read-string "Edit: " text))
-         free)))))
+        (let ((edited (promptu--strip-surrounding-newlines
+                       (read-string "Edit: " text))))
+          ;; Blank input leaves the entry unchanged, like the buffer path;
+          ;; removing an entry is DEL's job.
+          (if (string-blank-p edited)
+              (message "promptu: empty; nothing saved")
+            (promptu--replace-last-entry edited free)))))))
 
 (defun promptu--toggle-negate ()
   "Toggle the negate-next flag."

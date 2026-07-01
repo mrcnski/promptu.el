@@ -670,6 +670,15 @@ transient, so stub them to sentinels and check which one is chosen."
      (promptu--edit-last))
    (should (equal promptu--session '("edited")))))
 
+(ert-deftest promptu-edit-last-blank-is-noop ()
+  "Editing an entry to blank leaves the session and undo untouched."
+  (promptu-test--with-session
+   (setq promptu--session '("a" "b"))
+   (cl-letf (((symbol-function 'read-string) (lambda (&rest _) "   \n")))
+     (promptu--edit-last))
+   (should (equal promptu--session '("a" "b")))
+   (should (null promptu--undo-stack))))
+
 ;;; Grayed-out (inapt) controls
 
 (ert-deftest promptu-history-prev-inapt-p ()
