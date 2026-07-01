@@ -240,17 +240,20 @@ its trailing line prefix is also applied to the first entry."
 ;;; Session state
 
 (defvar promptu--session nil
-  "Ordered list of resolved block strings for the current compose session.
-Oldest first; the most recently added block is last.")
+  "Ordered list of entries for the current compose session.
+Oldest first; the most recently added entry is last.  Each entry is
+either a bare string (a building block) or a free-text region -- a plist
+`(:text STRING :free t)' produced by `M-E'; see `promptu--make-entry'.")
 
 (defvar promptu--negate-next nil
   "When non-nil, the next block added is negated, then this resets to nil.")
 
 (defvar promptu-history nil
   "List of past prompts, most recent first.
-Each entry is a session: a list of resolved block strings, the same shape
-as `promptu--session'.  Recompose an entry with `promptu--compose', which
-re-applies the current `promptu-separator'.")
+Each element is a session: a list of entries the same shape as
+`promptu--session' (bare-string blocks and/or free-text plists).
+Recompose one with `promptu--compose', which re-applies the current
+`promptu-separator'.")
 
 (defvar promptu--history-index nil
   "Position in `promptu-history' while stepping with M-p / M-n.
@@ -439,7 +442,7 @@ Creates the containing directory if needed; write errors are reported via
               promptu-history-file err)))))
 
 (defun promptu--history-add (session)
-  "Record SESSION (a list of resolved strings) at the front of history.
+  "Record SESSION (a list of session entries) at the front of history.
 Moves an identical existing entry to the front, truncates to
 `promptu-history-max', and persists when configured.  No-op for an empty
 SESSION."
