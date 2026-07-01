@@ -635,6 +635,33 @@ transient, so stub them to sentinels and check which one is chosen."
             (should (promptu--entry-free-p (nth 1 (car promptu-history))))))
       (delete-file file))))
 
+;;; Stripping surrounding newlines from typed input
+
+(ert-deftest promptu-strip-surrounding-newlines ()
+  "Only leading/trailing newlines go; spaces, tabs, and inner newlines stay."
+  (should (equal (promptu--strip-surrounding-newlines "\n\nhi\n\n") "hi"))
+  (should (equal (promptu--strip-surrounding-newlines "\n  hi  \n") "  hi  "))
+  (should (equal (promptu--strip-surrounding-newlines "\thi\t") "\thi\t"))
+  (should (equal (promptu--strip-surrounding-newlines "\na\n\nb\n") "a\n\nb"))
+  (should (equal (promptu--strip-surrounding-newlines "\r\nhi\r\n") "hi"))
+  (should (equal (promptu--strip-surrounding-newlines "hi") "hi"))
+  (should (equal (promptu--strip-surrounding-newlines "") "")))
+
+(ert-deftest promptu-add-strips-surrounding-newlines-from-placeholder ()
+  "A placeholder value's surrounding newlines are stripped; spaces are kept."
+  (promptu-test--with-session
+   (cl-letf (((symbol-function 'read-string) (lambda (&rest _) "\n error text \n")))
+     (promptu--add '(:text "note: {msg}" :placeholders ("msg"))))
+   (should (equal promptu--session '("note:  error text ")))))
+
+(ert-deftest promptu-edit-last-strips-surrounding-newlines ()
+  "The minibuffer edit path strips surrounding newlines from the result."
+  (promptu-test--with-session
+   (setq promptu--session '("a"))
+   (cl-letf (((symbol-function 'read-string) (lambda (&rest _) "\nedited\n")))
+     (promptu--edit-last))
+   (should (equal promptu--session '("edited")))))
+
 (provide 'promptu-test)
 
 ;;; promptu-test.el ends here

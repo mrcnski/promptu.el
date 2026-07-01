@@ -163,6 +163,14 @@ than a discrete building block.  Inherit or override to taste."
 
 ;;; Pure compose core
 
+(defun promptu--strip-surrounding-newlines (text)
+  "Return TEXT with leading and trailing newlines removed.
+Unlike `string-trim', spaces and tabs at the edges are preserved; only
+newline (and carriage-return) characters are stripped.  Used to drop
+incidental blank lines from typed input without touching intentional
+surrounding spaces."
+  (string-trim text "[\n\r]+" "[\n\r]+"))
+
 (defun promptu--substitute (text values)
   "Substitute placeholders in TEXT using VALUES.
 VALUES is an alist of (NAME . VALUE) where NAME is a placeholder name
@@ -270,7 +278,8 @@ in TEMPLATE is not prompted for."
   (delq nil
         (mapcar (lambda (name)
                   (when (string-search (format "{%s}" name) template)
-                    (cons name (read-string (format "%s: " name)))))
+                    (cons name (promptu--strip-surrounding-newlines
+                                (read-string (format "%s: " name))))))
                 placeholders)))
 
 (defun promptu--add (block)
@@ -325,7 +334,9 @@ Safe no-op when the session is empty."
               (concat "Editing the last entry.  "
                       "\\[promptu--edit-commit] save, "
                       "\\[promptu--edit-abort] cancel."))))
-        (promptu--replace-last-entry (read-string "Edit: " text) free)))))
+        (promptu--replace-last-entry
+         (promptu--strip-surrounding-newlines (read-string "Edit: " text))
+         free)))))
 
 (defun promptu--toggle-negate ()
   "Toggle the negate-next flag."
@@ -549,7 +560,7 @@ when the edit is committed.  HEADER is passed through
 `C-c C-c' is itself the confirmation.  A blank buffer leaves the session
 unchanged."
   (interactive)
-  (let ((text (string-trim (buffer-string)))
+  (let ((text (promptu--strip-surrounding-newlines (buffer-string)))
         (config promptu--edit-window-config)
         (apply-fn promptu--edit-apply))
     (if (string-blank-p text)
