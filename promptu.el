@@ -84,7 +84,7 @@ too old.  Upgrade it from GNU ELPA (M-x package-install RET transient RET)"))
   :group 'convenience
   :prefix "promptu-")
 
-(defcustom promptu-blocks
+(defconst promptu-default-blocks
   '((:key "t" :desc "" :text "{type a command}" :placeholders ("type a command"))
     (:key "i" :desc "investigate"    :text "investigate {link}" :placeholders ("link"))
     (:key "b" :desc "create branch"  :text "create a branch")
@@ -95,6 +95,13 @@ too old.  Upgrade it from GNU ELPA (M-x package-install RET transient RET)"))
     (:key "P" :desc "push"           :text "push when done" :negative "don't push")
     (:key "R" :desc "create a PR"    :text "create a PR")
     (:key "C" :desc "check CI"       :text "check CI"))
+  "The default value of `promptu-blocks'.
+A constant so it can be extended without retyping it, e.g.
+  (setq promptu-blocks
+        (append promptu-default-blocks
+                \\='((:key \"d\" :desc \"deploy\" :text \"deploy\"))))")
+
+(defcustom promptu-blocks promptu-default-blocks
   "Building blocks available in the `promptu' menu.
 
 Each block is a plist with these keys:

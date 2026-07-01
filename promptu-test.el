@@ -303,6 +303,12 @@ instead, so no `lwarn' fires from the refresh path."
       (promptu--warn-key-collisions))
     (should (= (length warnings) 1))))
 
+(ert-deftest promptu-blocks-defaults-to-default-blocks ()
+  "`promptu-blocks' ships equal to the public `promptu-default-blocks' constant,
+so users can extend it with (append promptu-default-blocks ...)."
+  (should (consp promptu-default-blocks))
+  (should (equal (default-value 'promptu-blocks) promptu-default-blocks)))
+
 (ert-deftest promptu-reserved-key-p ()
   (should (promptu--reserved-key-p "-"))
   (should (promptu--reserved-key-p "RET"))

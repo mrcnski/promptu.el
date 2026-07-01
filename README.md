@@ -97,6 +97,15 @@ default separator) a bulleted list:
         (:key "i" :desc "investigate" :text "investigate {link}" :placeholders ("link"))))
 ```
 
+This replaces the built-in set. To instead add to it, append to
+`promptu-default-blocks`:
+
+```elisp
+(setq promptu-blocks
+      (append promptu-default-blocks
+              '((:key "d" :desc "deploy" :text "deploy"))))
+```
+
 Each block is a plist:
 
 - `:key`: the transient trigger key. Avoid the reserved menu-control keys; see
