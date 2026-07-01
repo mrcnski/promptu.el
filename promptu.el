@@ -662,11 +662,10 @@ A no-op (no kill-ring change) when the session is empty."
   (interactive)
   (if (null promptu--session)
       (message "promptu: nothing to copy")
-    (let ((text (promptu--compose promptu--session))
-          (n (length promptu--session)))
+    (let ((text (promptu--compose promptu--session)))
       (promptu--history-add promptu--session)
       (kill-new text)
-      (message "promptu: copied %d block%s to kill ring" n (if (= n 1) "" "s")))))
+      (message "promptu: copied prompt to kill ring"))))
 
 ;;; Transient menu
 
