@@ -648,7 +648,8 @@ Each entry's text is faced with `promptu-free-text-face' when it is a
 free-text region and `promptu-preview-face' otherwise, so a free-form
 region stands out from the surrounding blocks."
   (concat
-   (promptu--line-prefix promptu-separator)
+   (propertize (promptu--line-prefix promptu-separator)
+               'face 'promptu-preview-face)
    (mapconcat (lambda (entry)
                 (propertize (promptu--entry-text entry)
                             'face (if (promptu--entry-free-p entry)
