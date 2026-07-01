@@ -487,6 +487,119 @@
     (should (equal entry "review\n- here is an error:\nTraceback\nValueError: x"))
     (should (equal (promptu--compose (list entry)) text))))
 
+;;; Typed session entries: blocks (strings) vs free-text regions (plists)
+
+(ert-deftest promptu-entry-text-and-free-p ()
+  (should (equal (promptu--entry-text "block") "block"))
+  (should (equal (promptu--entry-text '(:text "ft" :free t)) "ft"))
+  (should-not (promptu--entry-free-p "block"))
+  (should (promptu--entry-free-p '(:text "ft" :free t))))
+
+(ert-deftest promptu-make-entry-preserves-kind ()
+  (should (equal (promptu--make-entry "b" nil) "b"))
+  (should (equal (promptu--make-entry "f" t) '(:text "f" :free t))))
+
+(ert-deftest promptu-compose-mixes-block-and-free-text ()
+  "Compose reads text from both bare-string blocks and :text plists."
+  (let ((promptu-separator "\n- "))
+    (should (equal (promptu--compose (list "review" '(:text "err:\nx" :free t)))
+                   "- review\n- err:\nx"))))
+
+(ert-deftest promptu-edit-last-needs-buffer-p ()
+  "Free-text and multi-line entries need the buffer; single-line blocks don't."
+  (should-not (promptu--edit-last-needs-buffer-p "single line"))
+  (should (promptu--edit-last-needs-buffer-p "two\nlines"))
+  (should (promptu--edit-last-needs-buffer-p '(:text "ft" :free t))))
+
+(ert-deftest promptu-replace-last-entry-preserves-kind ()
+  (promptu-test--with-session
+   (setq promptu--session '("a" "b"))
+   (promptu--replace-last-entry "B2" nil)
+   (should (equal promptu--session '("a" "B2")))
+   (promptu--replace-last-entry "B3" t)
+   (should (equal promptu--session '("a" (:text "B3" :free t))))))
+
+(ert-deftest promptu-set-whole-entry-marks-free-text ()
+  "M-E collapses to one free-text entry that round-trips through compose."
+  (promptu-test--with-session
+   (let ((promptu-separator "\n- "))
+     (setq promptu--session '("a" "b"))
+     (promptu--set-whole-entry "- a\n- b")
+     (should (equal promptu--session '((:text "a\n- b" :free t))))
+     (should (promptu--entry-free-p (car promptu--session)))
+     (should (equal (promptu--compose promptu--session) "- a\n- b")))))
+
+(ert-deftest promptu-edit-last-single-line-block-uses-minibuffer ()
+  "A single-line block edits in the minibuffer and stays a plain block."
+  (promptu-test--with-session
+   (setq promptu--session '("a" "b"))
+   (cl-letf (((symbol-function 'run-at-time)
+              (lambda (&rest _) (error "should not defer a single-line block")))
+             ((symbol-function 'read-string) (lambda (&rest _) "B-edited")))
+     (promptu--edit-last))
+   (should (equal promptu--session '("a" "B-edited")))))
+
+(ert-deftest promptu-edit-last-multiline-block-defers-to-buffer ()
+  "A multi-line block goes to the buffer editor, not the minibuffer."
+  (promptu-test--with-session
+   (setq promptu--session '("a\nb"))
+   (let (deferred)
+     (cl-letf (((symbol-function 'read-string)
+                (lambda (&rest _) (error "should not use minibuffer for multi-line")))
+               ((symbol-function 'run-at-time)
+                (lambda (&rest _) (setq deferred t))))
+       (promptu--edit-last))
+     (should deferred))))
+
+(ert-deftest promptu-edit-last-free-text-defers-to-buffer ()
+  "A free-text region goes to the buffer editor even when single-line."
+  (promptu-test--with-session
+   (setq promptu--session (list (promptu--make-entry "hello" t)))
+   (let (deferred)
+     (cl-letf (((symbol-function 'read-string)
+                (lambda (&rest _) (error "should not use minibuffer for free text")))
+               ((symbol-function 'run-at-time)
+                (lambda (&rest _) (setq deferred t))))
+       (promptu--edit-last))
+     (should deferred))))
+
+(ert-deftest promptu-do-edit-last-exits-only-for-buffer-edit ()
+  "The M-e pre-command stays transient for a minibuffer edit and exits for a
+buffer edit, so the menu tears down before the edit buffer appears.  The real
+`transient--do-*' functions touch prefix state that only exists inside a live
+transient, so stub them to sentinels and check which one is chosen."
+  (promptu-test--with-session
+   (cl-letf (((symbol-function 'transient--do-call) (lambda () 'stay))
+             ((symbol-function 'transient--do-exit) (lambda () 'exit)))
+     ;; empty session: stay (nothing to edit, no crash on the nil entry)
+     (should (eq (promptu--do-edit-last) 'stay))
+     ;; single-line block: stay (edits in the minibuffer)
+     (setq promptu--session '("a" "b"))
+     (should (eq (promptu--do-edit-last) 'stay))
+     ;; multi-line block: exit (goes to the buffer editor)
+     (setq promptu--session '("a\nb"))
+     (should (eq (promptu--do-edit-last) 'exit))
+     ;; free-text region: exit
+     (setq promptu--session (list (promptu--make-entry "x" t)))
+     (should (eq (promptu--do-edit-last) 'exit)))))
+
+(ert-deftest promptu-history-round-trips-free-text-entry ()
+  "A free-text region keeps its provenance when persisted and reloaded."
+  (let* ((file (make-temp-file "promptu-history-"))
+         (promptu-history-file file)
+         (promptu-history-max 50))
+    (unwind-protect
+        (progn
+          (let ((promptu-history (list (list "a" (list :text "b\nc" :free t)))))
+            (promptu--history-save))
+          (let ((promptu-history nil)
+                (promptu--history-loaded nil))
+            (promptu--history-ensure-loaded)
+            (should (equal promptu-history
+                           (list (list "a" (list :text "b\nc" :free t)))))
+            (should (promptu--entry-free-p (nth 1 (car promptu-history))))))
+      (delete-file file))))
+
 (provide 'promptu-test)
 
 ;;; promptu-test.el ends here

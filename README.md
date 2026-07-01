@@ -28,7 +28,7 @@ it into your agent (e.g. `agent-shell`) or anywhere else.
 | _block_   | Add that block to the prompt                         |
 | `-`       | Arm "negate next" — the next block added is negated  |
 | `DEL`     | Remove the most recently added block                |
-| `M-e`     | Edit the most recently added block in the minibuffer |
+| `M-e`     | Edit the most recently added entry (in a buffer if it's multi-line or free text) |
 | `M-E`     | Edit the whole prompt as free text (saved as one entry) |
 | `M-p`     | Recall an older prompt from history                 |
 | `M-n`     | Recall a newer prompt (or return to your draft)     |
@@ -47,7 +47,9 @@ press `M-E` to open the whole prompt in a buffer as free text. Edit freely,
 then `C-c C-c` to save or `C-c C-k` to cancel.
 
 **Note:** Saving replaces the prompt with the buffer's contents as a single
-entry, so the previous block-by-block breakdown is discarded.
+free-text entry, so the previous block-by-block breakdown is discarded. That
+entry is shown in a distinct color in the preview (see `promptu-free-text-face`)
+so it's clear that part is one free-form region rather than separate blocks.
 
 ### History
 

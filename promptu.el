@@ -49,7 +49,8 @@
 ;;   <block keys>  add that block
 ;;   -             arm "negate next" (the next block added is negated)
 ;;   DEL           remove the most recently added block
-;;   M-e           edit the most recently added block in the minibuffer
+;;   M-e           edit the most recently added entry (in a buffer when it
+;;                 spans multiple lines or is free text, else the minibuffer)
 ;;   M-E           edit the whole prompt as free text (saved as one entry)
 ;;   M-p           recall an older prompt from history
 ;;   M-n           recall a newer prompt (or return to the in-progress draft)
@@ -152,6 +153,14 @@ enabling persistence writes those values to this file in plain text."
   "Face for placeholder hints (e.g. <link>) shown in block descriptions."
   :group 'promptu)
 
+(defface promptu-free-text-face
+  '((t :inherit font-lock-string-face))
+  "Face for free-text regions in the composed-prompt preview.
+A region becomes free text when the whole prompt is edited with `M-E'; it
+is shown distinctly so it is clear that part is one free-form unit rather
+than a discrete building block.  Inherit or override to taste."
+  :group 'promptu)
+
 ;;; Pure compose core
 
 (defun promptu--substitute (text values)
@@ -180,14 +189,43 @@ placeholders, which the caller substitutes."
       (match-string 1 separator)
     ""))
 
+;; A session entry is either a plain string (a building block, the common
+;; case) or a plist `(:text STRING :free t)' marking a free-text region --
+;; text produced by editing the whole prompt with `M-E', which no longer
+;; maps onto a single block.  Blocks stay bare strings so existing history
+;; files (lists of strings) still load, treated as blocks.
+
+(defun promptu--make-entry (text free)
+  "Return a session entry holding TEXT.
+When FREE is non-nil the entry is a free-text region; otherwise it is a
+plain block, represented as the bare string TEXT."
+  (if free (list :text text :free t) text))
+
+(defun promptu--entry-text (entry)
+  "Return the text string of session ENTRY (a string or a :text plist)."
+  (if (stringp entry) entry (plist-get entry :text)))
+
+(defun promptu--entry-free-p (entry)
+  "Non-nil when session ENTRY is a free-text region rather than a block."
+  (and (not (stringp entry)) (plist-get entry :free) t))
+
+(defun promptu--edit-last-needs-buffer-p (entry)
+  "Non-nil when ENTRY should be edited in a buffer, not the minibuffer.
+True for free-text regions and for any entry whose text spans multiple
+lines, since the one-line minibuffer handles neither well."
+  (or (promptu--entry-free-p entry)
+      (and (string-search "\n" (promptu--entry-text entry)) t)))
+
 (defun promptu--compose (entries)
-  "Join ENTRIES (a list of resolved strings) into the composed prompt.
-Entries are joined with `promptu-separator'; when the separator contains
-a newline, its trailing line prefix is also applied to the first entry."
+  "Join ENTRIES into the composed prompt.
+Each entry is a session entry (see `promptu--entry-text').  Entries are
+joined with `promptu-separator'; when the separator contains a newline,
+its trailing line prefix is also applied to the first entry."
   (if (null entries)
       ""
     (concat (promptu--line-prefix promptu-separator)
-            (string-join entries promptu-separator))))
+            (string-join (mapcar #'promptu--entry-text entries)
+                         promptu-separator))))
 
 ;;; Session state
 
@@ -256,16 +294,38 @@ Safe no-op when the session is empty."
     (setq promptu--session (butlast promptu--session)
           promptu--history-index nil)))
 
+(defun promptu--replace-last-entry (text free)
+  "Replace the session's last entry with TEXT, marked free-text when FREE.
+Also leaves history navigation.  Assumes a non-empty session."
+  (setq promptu--session
+        (append (butlast promptu--session)
+                (list (promptu--make-entry text free)))
+        promptu--history-index nil))
+
 (defun promptu--edit-last ()
-  "Edit the most recently added block's text in the minibuffer.
-Pre-fills the minibuffer with the current last entry and replaces it
-with the edited value.  Safe no-op when the session is empty."
+  "Edit the most recently added entry, preserving whether it is free text.
+A single-line block is edited in the minibuffer, pre-filled with its
+current text.  A free-text region or a multi-line entry is edited in a
+dedicated buffer instead, since the minibuffer handles neither well.
+Safe no-op when the session is empty."
   (interactive)
   (when promptu--session
-    (let ((edited (read-string "Edit: " (car (last promptu--session)))))
-      (setq promptu--session
-            (append (butlast promptu--session) (list edited))
-            promptu--history-index nil))))
+    (let* ((entry (car (last promptu--session)))
+           (text (promptu--entry-text entry))
+           (free (promptu--entry-free-p entry)))
+      (if (promptu--edit-last-needs-buffer-p entry)
+          ;; Open after this command returns and the transient has torn
+          ;; down, as with `promptu--edit-prompt'.
+          (run-at-time
+           0 nil
+           (lambda ()
+             (promptu--edit-open
+              text
+              (lambda (edited) (promptu--replace-last-entry edited free))
+              (concat "Editing the last entry.  "
+                      "\\[promptu--edit-commit] save, "
+                      "\\[promptu--edit-abort] cancel."))))
+        (promptu--replace-last-entry (read-string "Edit: " text) free)))))
 
 (defun promptu--toggle-negate ()
   "Toggle the negate-next flag."
@@ -395,13 +455,21 @@ for reusing a prompt without opening the `promptu' menu."
     (kill-new (promptu--compose session))
     (message "promptu: copied recalled prompt to kill ring")))
 
-;;; Editing the whole prompt
+;;; Editing in a dedicated buffer
+
+;; Shared machinery for editing free-form text in a buffer, used both by
+;; `M-E' (edit the whole prompt) and by `M-e' when the last entry is too
+;; big for the minibuffer.  A caller supplies the initial text, a header,
+;; and an apply function run with the trimmed buffer text on commit.
 
 (defconst promptu--edit-buffer-name "*promptu prompt*"
-  "Name of the buffer used to edit the entire running prompt.")
+  "Name of the buffer used to edit prompt text.")
 
 (defvar-local promptu--edit-window-config nil
   "Window configuration to restore when the prompt-edit buffer closes.")
+
+(defvar-local promptu--edit-apply nil
+  "Function run with the trimmed buffer text when the edit is committed.")
 
 (defvar promptu-edit-mode-map
   (let ((map (make-sparse-keymap)))
@@ -411,14 +479,9 @@ for reusing a prompt without opening the `promptu' menu."
   "Keymap for `promptu-edit-mode'.")
 
 (define-derived-mode promptu-edit-mode text-mode "Promptu-Edit"
-  "Major mode for editing the entire running promptu prompt as free text.
-Saving replaces the running prompt with the buffer's contents as a single
-entry, discarding the previous block-by-block breakdown."
-  (setq header-line-format
-        (substitute-command-keys
-         (concat "Editing the whole prompt.  "
-                 "\\[promptu--edit-commit] save as one entry (replaces all), "
-                 "\\[promptu--edit-abort] cancel."))))
+  "Major mode for editing promptu prompt text as free text.
+Committing runs the edit's apply function on the buffer contents; see
+`promptu--edit-open'.  The header line describes the specific edit.")
 
 (defun promptu--strip-line-prefix (text)
   "Remove a single leading `promptu-separator' line prefix from TEXT.
@@ -433,44 +496,65 @@ does not start with it."
         (substring text (length prefix))
       text)))
 
+(defun promptu--set-whole-entry (text)
+  "Replace the whole session with TEXT as a single free-text entry.
+Strips the leading line prefix so TEXT round-trips through
+`promptu--compose', and leaves history navigation."
+  (setq promptu--session
+        (list (promptu--make-entry (promptu--strip-line-prefix text) t))
+        promptu--history-index nil))
+
 (defun promptu--edit-prompt ()
   "Edit the entire running prompt as free text in a dedicated buffer.
 The buffer is pre-filled with the composed prompt, so any part -- not
 just the last entry -- can be edited or deleted, and multi-line text
 \(such as a pasted error) can be added freely.  Saving collapses the
-whole prompt into a single entry.  Safe no-op when the session is empty."
+whole prompt into a single free-text entry.  Safe no-op when the session
+is empty."
   (interactive)
   (if (null promptu--session)
       (message "promptu: nothing to edit")
     ;; Open after this command returns and the transient has torn down, so
     ;; transient's own window-configuration restore does not clobber the
     ;; edit window.
-    (run-at-time 0 nil #'promptu--edit-open)))
+    (run-at-time
+     0 nil
+     (lambda ()
+       (promptu--edit-open
+        (promptu--compose promptu--session)
+        #'promptu--set-whole-entry
+        (concat "Editing the whole prompt.  "
+                "\\[promptu--edit-commit] save as one entry (replaces all), "
+                "\\[promptu--edit-abort] cancel."))))))
 
-(defun promptu--edit-open ()
-  "Pop up the prompt-edit buffer pre-filled with the running prompt."
+(defun promptu--edit-open (initial apply-fn header)
+  "Pop up the edit buffer showing INITIAL text with HEADER on the header line.
+APPLY-FN is stored buffer-locally and run with the trimmed buffer text
+when the edit is committed.  HEADER is passed through
+`substitute-command-keys'."
   (let ((config (current-window-configuration))
         (buf (get-buffer-create promptu--edit-buffer-name)))
     (with-current-buffer buf
       (promptu-edit-mode)
       (erase-buffer)
-      (insert (promptu--compose promptu--session))
+      (insert initial)
       (goto-char (point-min))
-      (setq promptu--edit-window-config config))
+      (setq promptu--edit-window-config config
+            promptu--edit-apply apply-fn
+            header-line-format (substitute-command-keys header)))
     (pop-to-buffer buf)))
 
 (defun promptu--edit-commit ()
-  "Replace the running prompt with the buffer text and return to the menu.
-The whole prompt becomes a single entry, discarding the previous
-block-by-block breakdown; `C-c C-c' is itself the confirmation.  A blank
-buffer leaves the session unchanged."
+  "Apply the buffer text via this edit's apply function and return to the menu.
+`C-c C-c' is itself the confirmation.  A blank buffer leaves the session
+unchanged."
   (interactive)
   (let ((text (string-trim (buffer-string)))
-        (config promptu--edit-window-config))
+        (config promptu--edit-window-config)
+        (apply-fn promptu--edit-apply))
     (if (string-blank-p text)
         (message "promptu: prompt is empty; nothing saved")
-      (setq promptu--session (list (promptu--strip-line-prefix text))
-            promptu--history-index nil)
+      (funcall apply-fn text)
       (promptu--edit-finish config))))
 
 (defun promptu--edit-abort ()
@@ -558,6 +642,21 @@ description-derived command symbol."
                    specs)))))
      (nreverse specs))))
 
+(defun promptu--preview-body ()
+  "Render the composed prompt, facing free-text regions distinctly.
+Each entry's text is faced with `promptu-free-text-face' when it is a
+free-text region and `promptu-preview-face' otherwise, so a free-form
+region stands out from the surrounding blocks."
+  (concat
+   (promptu--line-prefix promptu-separator)
+   (mapconcat (lambda (entry)
+                (propertize (promptu--entry-text entry)
+                            'face (if (promptu--entry-free-p entry)
+                                      'promptu-free-text-face
+                                    'promptu-preview-face)))
+              promptu--session
+              (propertize promptu-separator 'face 'promptu-preview-face))))
+
 (defun promptu--preview ()
   "Render the live preview block shown at the bottom of the menu."
   (concat
@@ -566,8 +665,20 @@ description-derived command symbol."
      (concat "  " (propertize "[negate next]" 'face 'warning)))
    "\n"
    (if promptu--session
-       (propertize (promptu--compose promptu--session) 'face 'promptu-preview-face)
+       (promptu--preview-body)
      (propertize "(empty -- pick blocks above)" 'face 'shadow))))
+
+(defun promptu--do-edit-last ()
+  "Transient pre-command for `M-e' (`promptu--edit-last').
+Stay transient for a quick minibuffer edit, but exit -- like `M-E' --
+when the last entry needs the buffer editor, so the menu tears down and
+the edit buffer can take over input.  Transient uses this as a
+suffix's pre-command because its name contains `--do-'; the return value
+must come from a `transient--do-*' function."
+  (if (and promptu--session
+           (promptu--edit-last-needs-buffer-p (car (last promptu--session))))
+      (transient--do-exit)
+    (transient--do-call)))
 
 ;;;###autoload
 (transient-define-prefix promptu ()
@@ -578,7 +689,7 @@ description-derived command symbol."
   ["Controls"
    ("-"   "negate next" promptu--toggle-negate :transient t)
    ("DEL" "remove last" promptu--remove-last   :transient t)
-   ("M-e" "edit last"   promptu--edit-last      :transient t)
+   ("M-e" "edit last"   promptu--edit-last      :transient promptu--do-edit-last)
    ("M-E" "edit prompt" promptu--edit-prompt)
    ("q"   "abort"       transient-quit-one)]
   ["History"
