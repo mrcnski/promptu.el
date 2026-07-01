@@ -670,6 +670,19 @@ transient, so stub them to sentinels and check which one is chosen."
      (promptu--edit-last))
    (should (equal promptu--session '("edited")))))
 
+;;; Grayed-out (inapt) controls
+
+(ert-deftest promptu-history-prev-inapt-p ()
+  "M-p is inapt when history is empty or navigation is at the oldest entry."
+  (let ((promptu-history nil) (promptu--history-index nil))
+    (should (promptu--history-prev-inapt-p)))            ; empty history
+  (let ((promptu-history '(("a") ("b") ("c"))) (promptu--history-index nil))
+    (should-not (promptu--history-prev-inapt-p)))         ; not navigating yet
+  (let ((promptu-history '(("a") ("b") ("c"))) (promptu--history-index 0))
+    (should-not (promptu--history-prev-inapt-p)))         ; room to step older
+  (let ((promptu-history '(("a") ("b") ("c"))) (promptu--history-index 2))
+    (should (promptu--history-prev-inapt-p))))            ; already at the oldest
+
 ;;; Undo / redo
 
 (ert-deftest promptu-undo-redo-adds ()

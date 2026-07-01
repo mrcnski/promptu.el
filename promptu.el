@@ -767,6 +767,14 @@ Reflects that editing the last entry edits the whole prompt when it is a
 single free-text region."
   (if (promptu--single-free-text-p) "edit all (free text)" "edit last"))
 
+(defun promptu--history-prev-inapt-p ()
+  "Non-nil when `M-p' would do nothing.
+That is when history is empty, or navigation is already at the oldest
+entry so stepping older would only clamp in place."
+  (or (null promptu-history)
+      (and promptu--history-index
+           (= promptu--history-index (1- (length promptu-history))))))
+
 (defun promptu--do-edit-last ()
   "Transient pre-command for `M-e' (`promptu--edit-last').
 Stay transient for a quick minibuffer edit, but exit -- like `M-E' --
@@ -782,26 +790,34 @@ must come from a `transient--do-*' function."
 ;;;###autoload
 (transient-define-prefix promptu ()
   "Compose an LLM prompt from building blocks."
+  ;; Re-evaluate the :inapt-if* predicates on every command so keys that
+  ;; would do nothing (e.g. undo with an empty stack) gray out live.
+  :refresh-suffixes t
   ["Blocks"
    :class transient-column
    :setup-children promptu--block-suffixes]
   ["Controls"
    ("-"   "negate next" promptu--toggle-negate :transient t)
    ("DEL" promptu--remove-last
-    :description promptu--remove-last-description :transient t)
+    :description promptu--remove-last-description
+    :inapt-if-nil promptu--session :transient t)
    ("M-e" promptu--edit-last
     :description promptu--edit-last-description
+    :inapt-if-nil promptu--session
     :transient promptu--do-edit-last)
-   ("M-E" "edit all" promptu--edit-prompt)
-   ("C-/"   "undo" promptu--undo :transient t)
-   ("C-M-/" "redo" promptu--redo :transient t)
+   ("M-E" "edit all" promptu--edit-prompt :inapt-if-nil promptu--session)
+   ("C-/"   "undo" promptu--undo :inapt-if-nil promptu--undo-stack :transient t)
+   ("C-M-/" "redo" promptu--redo :inapt-if-nil promptu--redo-stack :transient t)
    ("q"   "abort"       transient-quit-one)]
   ["History"
-   ("M-p" "older"  promptu--history-prev :transient t)
-   ("M-n" "newer"  promptu--history-next :transient t)
-   ("M-r" "browse" promptu--history-pick :transient t)]
+   ("M-p" "older"  promptu--history-prev
+    :inapt-if promptu--history-prev-inapt-p :transient t)
+   ("M-n" "newer"  promptu--history-next
+    :inapt-if-nil promptu--history-index :transient t)
+   ("M-r" "browse" promptu--history-pick
+    :inapt-if-nil promptu-history :transient t)]
   [:description promptu--preview
-   ("RET" "finish (copy)" promptu--finish)]
+                ("RET" "finish (copy)" promptu--finish :inapt-if-nil promptu--session)]
   (interactive)
   (promptu--reset)
   (promptu--history-ensure-loaded)
