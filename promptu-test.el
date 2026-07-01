@@ -91,6 +91,10 @@
   "Run BODY with a fresh, isolated promptu session."
   `(let ((promptu--session nil)
          (promptu--negate-next nil)
+         (promptu--undo-stack nil)
+         (promptu--redo-stack nil)
+         (promptu--history-index nil)
+         (promptu--history-stash nil)
          (promptu-negation-prefix "don't "))
      ,@body))
 
@@ -283,6 +287,8 @@
   (should (promptu--reserved-key-p "M-p"))
   (should (promptu--reserved-key-p "M-n"))
   (should (promptu--reserved-key-p "M-r"))
+  (should (promptu--reserved-key-p "C-/"))
+  (should (promptu--reserved-key-p "C-M-/"))
   (should (promptu--reserved-key-p "q"))
   (should-not (promptu--reserved-key-p "p"))
   (should-not (promptu--reserved-key-p "i")))
@@ -297,6 +303,8 @@
          (promptu--history-loaded t)
          (promptu--history-index nil)
          (promptu--history-stash nil)
+         (promptu--undo-stack nil)
+         (promptu--redo-stack nil)
          (promptu--session nil)
          (promptu--negate-next nil)
          (promptu-negation-prefix "don't ")
@@ -661,6 +669,125 @@ transient, so stub them to sentinels and check which one is chosen."
    (cl-letf (((symbol-function 'read-string) (lambda (&rest _) "\nedited\n")))
      (promptu--edit-last))
    (should (equal promptu--session '("edited")))))
+
+;;; Undo / redo
+
+(ert-deftest promptu-undo-redo-adds ()
+  "Undo steps back through adds; redo replays them."
+  (promptu-test--with-session
+   (promptu--add '(:text "a"))
+   (promptu--add '(:text "b"))
+   (should (equal promptu--session '("a" "b")))
+   (promptu--undo)
+   (should (equal promptu--session '("a")))
+   (promptu--undo)
+   (should (null promptu--session))
+   (promptu--redo)
+   (should (equal promptu--session '("a")))
+   (promptu--redo)
+   (should (equal promptu--session '("a" "b")))))
+
+(ert-deftest promptu-undo-empty-reports ()
+  "Undo/redo with nothing to do leaves the session untouched."
+  (promptu-test--with-session
+   (promptu--add '(:text "a"))
+   (promptu--undo)                       ; back to empty
+   (promptu--undo)                       ; nothing to undo
+   (should (null promptu--session))
+   (promptu--redo)                       ; back to ("a")
+   (promptu--redo)                       ; nothing to redo
+   (should (equal promptu--session '("a")))))
+
+(ert-deftest promptu-new-change-clears-redo ()
+  "A fresh change after an undo discards the redo history."
+  (promptu-test--with-session
+   (promptu--add '(:text "a"))
+   (promptu--add '(:text "b"))
+   (promptu--undo)                       ; ("a"), redo has ("a" "b")
+   (promptu--add '(:text "c"))           ; new change clears redo
+   (should (equal promptu--session '("a" "c")))
+   (should (null promptu--redo-stack))
+   (promptu--redo)                       ; nothing to redo
+   (should (equal promptu--session '("a" "c")))))
+
+(ert-deftest promptu-undo-covers-remove-edit-and-whole ()
+  "Remove-last, edit-last, and M-E collapse are all undoable."
+  (promptu-test--with-session
+   (let ((promptu-separator "\n- "))
+     (promptu--add '(:text "a"))
+     (promptu--add '(:text "b"))
+     (promptu--remove-last)               ; ("a")
+     (promptu--undo)
+     (should (equal promptu--session '("a" "b")))
+     (cl-letf (((symbol-function 'read-string) (lambda (&rest _) "B2")))
+       (promptu--edit-last))              ; ("a" "B2")
+     (should (equal promptu--session '("a" "B2")))
+     (promptu--undo)
+     (should (equal promptu--session '("a" "b")))
+     (promptu--set-whole-entry "- a\n- b") ; one free-text entry
+     (should (promptu--single-free-text-p))
+     (promptu--undo)
+     (should (equal promptu--session '("a" "b"))))))
+
+(ert-deftest promptu-undo-leaves-history-navigation ()
+  "Undo resets history navigation state."
+  (promptu-test--with-session
+   (setq promptu--history-index 2
+         promptu--history-stash '("draft"))
+   (promptu--add '(:text "a"))
+   (promptu--undo)
+   (should (null promptu--history-index))
+   (should (null promptu--history-stash))))
+
+(ert-deftest promptu-reset-clears-undo-stacks ()
+  (promptu-test--with-session
+   (promptu--add '(:text "a"))
+   (promptu--undo)
+   (should promptu--redo-stack)
+   (promptu--reset)
+   (should (null promptu--undo-stack))
+   (should (null promptu--redo-stack))))
+
+(ert-deftest promptu-history-prev-clears-undo ()
+  "Recalling from history starts a fresh undo slate, so undo cannot reach
+back into a different prompt's edits and switch to it."
+  (promptu-test--with-history
+   (setq promptu-history '(("old")))
+   (promptu--add '(:text "a"))
+   (promptu--add '(:text "b"))          ; undo stack now holds draft snapshots
+   (promptu--history-prev)              ; jump to ("old")
+   (should (equal promptu--session '("old")))
+   (should (null promptu--undo-stack))
+   (should (null promptu--redo-stack))
+   ;; undo here is a no-op: it neither switches prompts nor errors
+   (promptu--undo)
+   (should (equal promptu--session '("old")))))
+
+(ert-deftest promptu-history-pick-clears-undo ()
+  "Loading a prompt with M-r also clears undo; it is not itself undoable."
+  (promptu-test--with-history
+   (setq promptu-history '(("a" "b") ("c"))
+         promptu--session '("draft"))
+   (promptu--add '(:text "x"))          ; build some undo history on the draft
+   (cl-letf (((symbol-function 'completing-read)
+              (lambda (&rest _) (promptu--compose '("a" "b")))))
+     (promptu--history-pick))
+   (should (equal promptu--session '("a" "b")))
+   (should (null promptu--undo-stack))
+   (promptu--undo)                      ; nothing to undo; stays on loaded prompt
+   (should (equal promptu--session '("a" "b")))))
+
+(ert-deftest promptu-undo-works-after-recall ()
+  "After recalling, edits to the recalled prompt are undoable within it."
+  (promptu-test--with-history
+   (setq promptu-history '(("old")))
+   (promptu--add '(:text "a"))
+   (promptu--history-prev)              ; session ("old"), undo cleared
+   (promptu--add '(:text "extra"))      ; edit the recalled prompt
+   (should (equal promptu--session '("old" "extra")))
+   (promptu--undo)                      ; reverts within the recalled prompt
+   (should (equal promptu--session '("old")))
+   (should (null promptu--history-index))))
 
 (provide 'promptu-test)
 

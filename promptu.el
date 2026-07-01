@@ -52,6 +52,8 @@
 ;;   M-e           edit the most recently added entry (in a buffer when it
 ;;                 spans multiple lines or is free text, else the minibuffer)
 ;;   M-E           edit the whole prompt as free text (saved as one entry)
+;;   C-/           undo the last session change
+;;   C-M-/         redo an undone change
 ;;   M-p           recall an older prompt from history
 ;;   M-n           recall a newer prompt (or return to the in-progress draft)
 ;;   M-r           browse history and load a past prompt
@@ -263,13 +265,63 @@ recent entry.")
 (defvar promptu--history-loaded nil
   "Non-nil once persisted history has been loaded from `promptu-history-file'.")
 
+(defvar promptu--undo-stack nil
+  "Stack of prior `promptu--session' states, newest first, for undo.
+Each element is a session snapshot; `promptu--checkpoint' pushes one
+before a session-changing command runs.")
+
+(defvar promptu--redo-stack nil
+  "Stack of session states undone via `promptu--undo', for redo.
+Cleared by `promptu--checkpoint' whenever a new change is made.")
+
 (defun promptu--reset ()
-  "Clear the compose session, negate-next flag, and history navigation.
+  "Clear the compose session, negate-next flag, history navigation, and undo.
 Does not clear `promptu-history' itself."
   (setq promptu--session nil
         promptu--negate-next nil
         promptu--history-index nil
-        promptu--history-stash nil))
+        promptu--history-stash nil
+        promptu--undo-stack nil
+        promptu--redo-stack nil))
+
+(defun promptu--checkpoint ()
+  "Save the current session for undo, discarding any pending redo history.
+Call at the start of a command, before it mutates `promptu--session', so
+the change can be reverted.  A new change invalidates the redo stack."
+  (push (copy-sequence promptu--session) promptu--undo-stack)
+  (setq promptu--redo-stack nil))
+
+(defun promptu--undo ()
+  "Restore the session to before the last change.
+Pushes the current session onto the redo stack and leaves history
+navigation.  Reports when there is nothing to undo."
+  (interactive)
+  (if (null promptu--undo-stack)
+      (message "promptu: nothing to undo")
+    (push (copy-sequence promptu--session) promptu--redo-stack)
+    (setq promptu--session (pop promptu--undo-stack)
+          promptu--history-index nil
+          promptu--history-stash nil)))
+
+(defun promptu--redo ()
+  "Reapply the most recently undone change.
+Pushes the current session onto the undo stack and leaves history
+navigation.  Reports when there is nothing to redo."
+  (interactive)
+  (if (null promptu--redo-stack)
+      (message "promptu: nothing to redo")
+    (push (copy-sequence promptu--session) promptu--undo-stack)
+    (setq promptu--session (pop promptu--redo-stack)
+          promptu--history-index nil
+          promptu--history-stash nil)))
+
+(defun promptu--forget-undo ()
+  "Discard undo/redo history.
+Called when history navigation switches the session to a different
+prompt, so undo stays scoped to edits of the prompt currently shown and
+never reverts a change made to a different one."
+  (setq promptu--undo-stack nil
+        promptu--redo-stack nil))
 
 (defun promptu--placeholder-values (template placeholders)
   "Prompt the minibuffer for each of PLACEHOLDERS that occurs in TEMPLATE.
@@ -291,6 +343,7 @@ them, then resets the negate flag."
          (template (promptu--resolve block negate))
          (values (promptu--placeholder-values template (plist-get block :placeholders)))
          (resolved (promptu--substitute template values)))
+    (promptu--checkpoint)
     (setq promptu--session (append promptu--session (list resolved))
           promptu--negate-next nil
           promptu--history-index nil)))
@@ -300,12 +353,15 @@ them, then resets the negate flag."
 Safe no-op when the session is empty."
   (interactive)
   (when promptu--session
+    (promptu--checkpoint)
     (setq promptu--session (butlast promptu--session)
           promptu--history-index nil)))
 
 (defun promptu--replace-last-entry (text free)
   "Replace the session's last entry with TEXT, marked free-text when FREE.
-Also leaves history navigation.  Assumes a non-empty session."
+Checkpoints for undo and leaves history navigation.  Assumes a non-empty
+session."
+  (promptu--checkpoint)
   (setq promptu--session
         (append (butlast promptu--session)
                 (list (promptu--make-entry text free)))
@@ -418,13 +474,15 @@ most-recent-first order."
 (defun promptu--history-prev ()
   "Recall an older prompt from history into the session.
 Stashes the in-progress session the first time navigation starts so
-`promptu--history-next' can return to it; clamps at the oldest entry."
+`promptu--history-next' can return to it; clamps at the oldest entry.
+Recalling starts a fresh undo slate (see `promptu--forget-undo')."
   (interactive)
   (promptu--history-ensure-loaded)
   (if (null promptu-history)
       (message "promptu: history is empty")
     (when (null promptu--history-index)
       (setq promptu--history-stash promptu--session))
+    (promptu--forget-undo)
     (setq promptu--history-index
           (if (null promptu--history-index)
               0
@@ -435,24 +493,30 @@ Stashes the in-progress session the first time navigation starts so
 (defun promptu--history-next ()
   "Recall a newer prompt from history into the session.
 Stepping back past the most recent entry restores the in-progress session
-saved by `promptu--history-prev'."
+saved by `promptu--history-prev'.  Like `promptu--history-prev', this
+starts a fresh undo slate."
   (interactive)
   (cond
    ((null promptu--history-index)
     (message "promptu: not navigating history"))
    ((zerop promptu--history-index)
+    (promptu--forget-undo)
     (setq promptu--session promptu--history-stash
           promptu--history-stash nil
           promptu--history-index nil))
    (t
+    (promptu--forget-undo)
     (setq promptu--history-index (1- promptu--history-index)
           promptu--session
           (copy-sequence (nth promptu--history-index promptu-history))))))
 
 (defun promptu--history-pick ()
-  "Pick a past prompt via completion and load it into the session."
+  "Pick a past prompt via completion and load it into the session.
+Loading starts a fresh undo slate (see `promptu--forget-undo'), so undo
+stays scoped to the loaded prompt."
   (interactive)
   (when-let ((session (promptu--history-read)))
+    (promptu--forget-undo)
     (setq promptu--session (copy-sequence session)
           promptu--history-index nil)))
 
@@ -510,7 +574,8 @@ does not start with it."
 (defun promptu--set-whole-entry (text)
   "Replace the whole session with TEXT as a single free-text entry.
 Strips the leading line prefix so TEXT round-trips through
-`promptu--compose', and leaves history navigation."
+`promptu--compose', checkpoints for undo, and leaves history navigation."
+  (promptu--checkpoint)
   (setq promptu--session
         (list (promptu--make-entry (promptu--strip-line-prefix text) t))
         promptu--history-index nil))
@@ -598,7 +663,8 @@ A no-op (no kill-ring change) when the session is empty."
 
 ;;; Transient menu
 
-(defconst promptu--reserved-keys '("-" "RET" "DEL" "M-e" "M-E" "M-p" "M-n" "M-r" "q")
+(defconst promptu--reserved-keys
+  '("-" "RET" "DEL" "M-e" "M-E" "M-p" "M-n" "M-r" "C-/" "C-M-/" "q")
   "Keys reserved for menu control; block keys must avoid these.")
 
 (defun promptu--reserved-key-p (key)
@@ -727,6 +793,8 @@ must come from a `transient--do-*' function."
     :description promptu--edit-last-description
     :transient promptu--do-edit-last)
    ("M-E" "edit all" promptu--edit-prompt)
+   ("C-/"   "undo" promptu--undo :transient t)
+   ("C-M-/" "redo" promptu--redo :transient t)
    ("q"   "abort"       transient-quit-one)]
   ["History"
    ("M-p" "older"  promptu--history-prev :transient t)

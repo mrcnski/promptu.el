@@ -30,6 +30,8 @@ it into your agent (e.g. `agent-shell`) or anywhere else.
 | `DEL`     | Remove the most recently added block                |
 | `M-e`     | Edit the most recently added entry (in a buffer if it's multi-line or free text) |
 | `M-E`     | Edit the whole prompt as free text (saved as one entry) |
+| `C-/`     | Undo the last change to the prompt                  |
+| `C-M-/`   | Redo an undone change                               |
 | `M-p`     | Recall an older prompt from history                 |
 | `M-n`     | Recall a newer prompt (or return to your draft)     |
 | `M-r`     | Browse history and load a past prompt               |
@@ -50,6 +52,13 @@ then `C-c C-c` to save or `C-c C-k` to cancel.
 free-text entry, so the previous block-by-block breakdown is discarded. That
 entry is shown in a distinct color in the preview (see `promptu-free-text-face`)
 so it's clear that part is one free-form region rather than separate blocks.
+
+### Undo
+
+`C-/` undoes the last change to the prompt and `C-M-/` redoes it. This covers
+adding, removing, and editing entries and collapsing the prompt with `M-E`.
+Undo is scoped to the prompt currently shown: recalling a past prompt from
+history (`M-p` / `M-n` / `M-r`) starts a fresh undo slate.
 
 ### History
 
