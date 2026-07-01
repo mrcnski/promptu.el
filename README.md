@@ -99,7 +99,8 @@ default separator) a bulleted list:
 
 Each block is a plist:
 
-- `:key`: the transient trigger key (avoid the reserved keys `-`, `RET`, `DEL`, `q`).
+- `:key`: the transient trigger key. Avoid the reserved menu-control keys; see
+  `promptu--reserved-keys`.
 - `:desc`: the short menu description.
 - `:text`: the affirmative text; may contain named placeholders as `{name}`.
 - `:negative`: optional text emitted when the block is negated.

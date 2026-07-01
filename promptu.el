@@ -88,8 +88,8 @@
 
 Each block is a plist with these keys:
 
-  :key          string, the transient trigger key (must avoid the
-                reserved keys -, RET, DEL, M-e, q).
+  :key          string, the transient trigger key.  Must avoid the keys
+                reserved for menu control; see `promptu--reserved-keys'.
   :desc         string, the short menu description.
   :text         string, the affirmative text emitted into the prompt.
                 May contain named placeholders written as {name}.
