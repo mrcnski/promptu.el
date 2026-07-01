@@ -678,6 +678,18 @@ A no-op (no kill-ring change) when the session is empty."
   "Return non-nil when KEY is a reserved control key."
   (and (member key promptu--reserved-keys) t))
 
+(defun promptu--warn-key-collisions ()
+  "Warn about `promptu-blocks' entries whose :key is reserved.
+Such blocks are skipped when building the menu.  This runs once when the
+menu opens rather than inside `promptu--block-suffixes', which
+`:refresh-suffixes' re-runs on every command -- warning there would spam
+one message per keystroke."
+  (dolist (block promptu-blocks)
+    (let ((key (plist-get block :key)))
+      (when (promptu--reserved-key-p key)
+        (lwarn 'promptu :warning
+               "block key %S collides with a reserved key; skipping" key)))))
+
 (defun promptu--add-command-symbol (key)
   "Return the interned command symbol for the block bound to KEY."
   (intern (concat "promptu--add-" key)))
@@ -706,17 +718,16 @@ empty, the hints stand alone with no leading space."
 (defun promptu--block-suffixes (_)
   "Build transient suffixes from `promptu-blocks'.
 One stay-open suffix per block; blocks whose key collides with a reserved
-key are skipped with a warning.  Each suffix gets an explicit command
-symbol keyed on its :key, so blocks sharing a :desc do not collide on a
-description-derived command symbol."
+key are skipped silently here (the collision is reported once by
+`promptu--warn-key-collisions' when the menu opens).  Each suffix gets an
+explicit command symbol keyed on its :key, so blocks sharing a :desc do not
+collide on a description-derived command symbol."
   (transient-parse-suffixes
    'promptu
    (let (specs)
      (dolist (block promptu-blocks)
        (let ((key (plist-get block :key)))
-         (if (promptu--reserved-key-p key)
-             (lwarn 'promptu :warning
-                    "block key %S collides with a reserved key; skipping" key)
+         (unless (promptu--reserved-key-p key)
            (let ((command (promptu--add-command-symbol key)))
              (fset command (promptu--make-add-command block))
              (push (list key
@@ -828,6 +839,7 @@ must come from a `transient--do-*' function."
   (interactive)
   (promptu--reset)
   (promptu--history-ensure-loaded)
+  (promptu--warn-key-collisions)
   (transient-setup 'promptu))
 
 (provide 'promptu)

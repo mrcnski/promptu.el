@@ -278,6 +278,31 @@
     (funcall (promptu--add-command-symbol "b"))
     (should (equal promptu--session '("FIRST" "SECOND")))))
 
+(ert-deftest promptu-block-suffixes-skips-reserved-key-silently ()
+  "Building suffixes must not warn: `:refresh-suffixes' re-runs it per keystroke.
+The reserved-key collision is reported by `promptu--warn-key-collisions'
+instead, so no `lwarn' fires from the refresh path."
+  (let ((promptu-blocks '((:key "DEL" :desc "bad" :text "X")
+                          (:key "a"   :desc "ok"  :text "Y")))
+        (warned nil))
+    (cl-letf (((symbol-function 'lwarn)
+               (lambda (&rest _) (setq warned t))))
+      (promptu--block-suffixes nil))
+    (should-not warned)
+    ;; The reserved key is dropped; only the valid block gets a command.
+    (should-not (fboundp (promptu--add-command-symbol "DEL")))
+    (should (fboundp (promptu--add-command-symbol "a")))))
+
+(ert-deftest promptu-warn-key-collisions-warns-once-per-reserved-key ()
+  "`promptu--warn-key-collisions' warns for each colliding block, valid ones aside."
+  (let ((promptu-blocks '((:key "DEL" :desc "bad" :text "X")
+                          (:key "a"   :desc "ok"  :text "Y")))
+        (warnings nil))
+    (cl-letf (((symbol-function 'lwarn)
+               (lambda (&rest args) (push args warnings))))
+      (promptu--warn-key-collisions))
+    (should (= (length warnings) 1))))
+
 (ert-deftest promptu-reserved-key-p ()
   (should (promptu--reserved-key-p "-"))
   (should (promptu--reserved-key-p "RET"))
