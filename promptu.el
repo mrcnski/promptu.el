@@ -4,7 +4,7 @@
 
 ;; Author: Marcin Swieczkowski
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "28.1") (transient "0.4.0"))
+;; Package-Requires: ((emacs "28.1") (transient "0.5.0"))
 ;; Keywords: convenience, tools
 ;; URL: https://github.com/mrcnski/promptu
 
@@ -67,6 +67,17 @@
 (require 'transient)
 (require 'subr-x)
 (require 'seq)
+(require 'cl-lib)
+(require 'eieio)
+
+;; promptu needs transient 0.5.0+ for the `refresh-suffixes' prefix slot.
+;; Probe for it directly (there is no reliable `transient-version' that far
+;; back) and fail clearly instead of with an opaque EIEIO slot error.
+(unless (cl-some (lambda (slot)
+                   (eq (eieio-slot-descriptor-name slot) 'refresh-suffixes))
+                 (eieio-class-slots (cl-find-class 'transient-prefix)))
+  (error "Promptu requires transient 0.5.0 or newer; the loaded transient is \
+too old.  Upgrade it from GNU ELPA (M-x package-install RET transient RET)"))
 
 (defgroup promptu nil
   "Compose LLM prompts from building blocks."
@@ -678,11 +689,9 @@ A no-op (no kill-ring change) when the session is empty."
   (and (member key promptu--reserved-keys) t))
 
 (defun promptu--warn-key-collisions ()
-  "Warn about `promptu-blocks' entries whose :key is reserved.
-Such blocks are skipped when building the menu.  This runs once when the
-menu opens rather than inside `promptu--block-suffixes', which
-`:refresh-suffixes' re-runs on every command -- warning there would spam
-one message per keystroke."
+  "Warn about `promptu-blocks' entries whose :key is reserved (and skipped).
+Run once when the menu opens, not in `promptu--block-suffixes' (which
+`:refresh-suffixes' re-runs every command), to avoid per-keystroke spam."
   (dolist (block promptu-blocks)
     (let ((key (plist-get block :key)))
       (when (promptu--reserved-key-p key)
@@ -799,6 +808,8 @@ when the last entry needs the buffer editor, so the menu tears down and
 the edit buffer can take over input.  Transient uses this as a
 suffix's pre-command because its name contains `--do-'; the return value
 must come from a `transient--do-*' function."
+  ;; transient--do-{exit,call} are internal but the canonical pre-command
+  ;; building blocks, stable since well before our transient 0.5.0 floor.
   (if (and promptu--session
            (promptu--edit-last-needs-buffer-p (car (last promptu--session))))
       (transient--do-exit)

@@ -144,7 +144,11 @@ Clone and load:
 
 ## Dependencies
 
-Emacs 28.1+ and `transient`. Nothing else.
+Emacs 28.1+ and `transient` 0.5.0+. Nothing else.
+
+`transient` ships with Emacs, but Emacs 28/29 bundle a version older than
+0.5.0. On those, install a newer `transient` from GNU ELPA (`M-x
+package-install RET transient RET`).
 
 ## Related
 
