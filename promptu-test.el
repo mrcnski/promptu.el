@@ -563,6 +563,41 @@
        (promptu--edit-last))
      (should deferred))))
 
+(ert-deftest promptu-preview-body-faces-leading-prefix ()
+  "The leading line prefix is faced like the separators, not left bare."
+  (let ((promptu-separator "\n- ")
+        (promptu--session '("a" "b")))
+    (let ((body (promptu--preview-body)))
+      ;; first char is the leading "-"; it must carry the preview face
+      (should (eq (get-text-property 0 'face body) 'promptu-preview-face)))))
+
+(ert-deftest promptu-preview-body-faces-free-text-region ()
+  "A free-text entry is faced with `promptu-free-text-face'."
+  (let* ((promptu-separator "\n- ")
+         (promptu--session (list (promptu--make-entry "blob" t)))
+         (body (promptu--preview-body)))
+    ;; after the leading "- " prefix, the entry text uses the free-text face
+    (should (eq (get-text-property 2 'face body) 'promptu-free-text-face))))
+
+(ert-deftest promptu-single-free-text-p ()
+  (let ((promptu--session nil))
+    (should-not (promptu--single-free-text-p)))
+  (let ((promptu--session '("a")))
+    (should-not (promptu--single-free-text-p)))
+  (let ((promptu--session (list (promptu--make-entry "x" t) "b")))
+    (should-not (promptu--single-free-text-p)))
+  (let ((promptu--session (list (promptu--make-entry "x" t))))
+    (should (promptu--single-free-text-p))))
+
+(ert-deftest promptu-control-descriptions-reflect-free-text ()
+  "DEL/M-e labels switch to \"all (free text)\" for a single free-text entry."
+  (let ((promptu--session '("a" "b")))
+    (should (equal (promptu--remove-last-description) "remove last"))
+    (should (equal (promptu--edit-last-description) "edit last")))
+  (let ((promptu--session (list (promptu--make-entry "blob" t))))
+    (should (equal (promptu--remove-last-description) "remove all (free text)"))
+    (should (equal (promptu--edit-last-description) "edit all (free text)"))))
+
 (ert-deftest promptu-do-edit-last-exits-only-for-buffer-edit ()
   "The M-e pre-command stays transient for a minibuffer edit and exits for a
 buffer edit, so the menu tears down before the edit buffer appears.  The real

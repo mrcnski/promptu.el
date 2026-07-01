@@ -668,6 +668,27 @@ region stands out from the surrounding blocks."
        (promptu--preview-body)
      (propertize "(empty -- pick blocks above)" 'face 'shadow))))
 
+(defun promptu--single-free-text-p ()
+  "Non-nil when the session is exactly one free-text entry.
+This is the state `M-E' produces (and that editing that entry again
+preserves): the whole prompt is one free-form region, so `DEL' and `M-e',
+which act on the last entry, act on the entire prompt."
+  (and promptu--session
+       (null (cdr promptu--session))
+       (promptu--entry-free-p (car promptu--session))))
+
+(defun promptu--remove-last-description (&rest _)
+  "Dynamic label for the `DEL' suffix.
+Reflects that removing the last entry removes the whole prompt when it is
+a single free-text region."
+  (if (promptu--single-free-text-p) "remove all (free text)" "remove last"))
+
+(defun promptu--edit-last-description (&rest _)
+  "Dynamic label for the `M-e' suffix.
+Reflects that editing the last entry edits the whole prompt when it is a
+single free-text region."
+  (if (promptu--single-free-text-p) "edit all (free text)" "edit last"))
+
 (defun promptu--do-edit-last ()
   "Transient pre-command for `M-e' (`promptu--edit-last').
 Stay transient for a quick minibuffer edit, but exit -- like `M-E' --
@@ -688,9 +709,12 @@ must come from a `transient--do-*' function."
    :setup-children promptu--block-suffixes]
   ["Controls"
    ("-"   "negate next" promptu--toggle-negate :transient t)
-   ("DEL" "remove last" promptu--remove-last   :transient t)
-   ("M-e" "edit last"   promptu--edit-last      :transient promptu--do-edit-last)
-   ("M-E" "edit prompt" promptu--edit-prompt)
+   ("DEL" promptu--remove-last
+    :description promptu--remove-last-description :transient t)
+   ("M-e" promptu--edit-last
+    :description promptu--edit-last-description
+    :transient promptu--do-edit-last)
+   ("M-E" "edit all" promptu--edit-prompt)
    ("q"   "abort"       transient-quit-one)]
   ["History"
    ("M-p" "older"  promptu--history-prev :transient t)
