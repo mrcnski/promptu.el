@@ -17,30 +17,24 @@ M-x promptu
 <img src="screenshot.png" alt="promptu transient menu showing blocks, controls, and a live preview" width="300">
 
 Pick building blocks one at a time. The menu stays open and shows a live
-preview as blocks accumulate. Blocks can prompt for runtime values and can be
-negated. Press `RET` to copy the composed prompt to the kill ring, then paste
-it into your agent (e.g. `agent-shell`) or anywhere else.
+preview as blocks accumulate.
 
-### Keys
+Press `RET` to copy the composed prompt to the kill ring, then paste it into
+your agent (e.g. `agent-shell`) or anywhere else.
 
-| Key       | Action                                              |
-|-----------|-----------------------------------------------------|
+### Basic Keys
+
+| Key       | Action                                               |
+|-----------|------------------------------------------------------|
 | _block_   | Add that block to the prompt                         |
-| `-`       | Arm "negate next" — the next block added is negated  |
-| `C-p` / `C-n` | Move the point up/down through entries          |
+| `-`       | The next block added is negated                      |
 | `DEL`     | Remove the last entry (or the entry above the point) |
-| `M-e`     | Edit the last entry (or the entry above the point)  |
-| `M-E`     | Edit the whole prompt as free text (saved as one entry) |
-| `C-/`     | Undo the last change to the prompt                  |
-| `C-M-/`   | Redo an undone change                               |
-| `M-p`     | Recall an older prompt from history                 |
-| `M-n`     | Recall a newer prompt (or return to your draft)     |
-| `M-r`     | Browse history and load a past prompt               |
-| `RET`     | Finish: copy the composed prompt to the kill ring   |
-| `q` / `C-g` | Abort with no output and no kill-ring change      |
+| `M-e`     | Edit the last entry (or the entry above the point)   |
+| `RET`     | Finish: copy the composed prompt to the kill ring    |
+| `q` / `C-g` | Abort with no output                               |
 
-Negation emits a block's explicit negative text when it defines one, otherwise
-its affirmative text prefixed with `promptu-negation-prefix` (default `don't `).
+The full set of keys is shown in the transient menu, and should be discoverable
+and self-explanatory.
 
 ### The point
 
@@ -51,8 +45,7 @@ point (it then shows as a `▮` in the preview).
 ### Editing the whole prompt
 
 `M-e` and `DEL` act on a single entry at a time.  To work on the prompt as a
-whole, press `M-E` to open the whole prompt in a buffer as free text.  Edit
-freely, then `C-c C-c` to save or `C-c C-k` to cancel.
+whole, press `M-E` to open the whole prompt in a buffer as free text.
 
 **Note:** Saving replaces the prompt with the buffer's contents as a single
 free-text entry, kept exactly as typed.  The previous block-by-block breakdown
@@ -62,17 +55,12 @@ than separate blocks.
 
 ### Undo
 
-`C-/` undoes the last change to the prompt and `C-M-/` redoes it. This covers
-adding, removing, and editing entries and collapsing the prompt with `M-E`.
-Undo is scoped to the prompt currently shown: recalling a past prompt from
-history (`M-p` / `M-n` / `M-r`) starts a fresh undo slate.
+`C-/` undoes the last change to the prompt and `C-M-/` redoes it.
 
 ### History
 
-Every finished prompt is remembered. Inside the menu, step back through past
-prompts with `M-p` / `M-n` like shell history, or browse them with `M-r`. A
-recalled prompt becomes the live session: you can keep editing it, or step
-forward with `M-n` to return to the draft you were building.
+Inside the menu, step back through past finished prompts with `M-p` / `M-n` like
+shell history, or browse them with `M-r`.
 
 To grab a past prompt without opening the menu:
 
@@ -91,6 +79,16 @@ default separator) a bulleted list:
 - review your changes
 - commit
 - don't push
+```
+
+## Installation
+
+Clone and load:
+
+```elisp
+(use-package promptu
+  :load-path "~/.emacs.d/packages/promptu"
+  :bind ("s-;" . promptu))
 ```
 
 ## Customization
@@ -144,19 +142,10 @@ History is in-memory by default. To keep it across Emacs restarts, point
       (expand-file-name "promptu-history.el" user-emacs-directory))
 ```
 
-It is loaded on first use and saved after each finished prompt. Note that
-composed prompts can include values you typed for placeholders, so enabling
-this writes those values to the file in plain text.
+It is loaded on first use and saved after each finished prompt.
 
-## Installation
-
-Clone and load:
-
-```elisp
-(use-package promptu
-  :load-path "~/.emacs.d/packages/promptu"
-  :bind ("s-;" . promptu))
-```
+**Note:** composed prompts can include values you typed for placeholders, so
+enabling this writes those values to the file in plain text.
 
 ## Dependencies
 
