@@ -31,37 +31,27 @@
 ;; The opposite of impromptu: composed, not off-the-cuff.
 ;;
 ;; Usage:
+;;
 ;;   M-x promptu
 ;;
 ;; Pick blocks one at a time; the menu stays open and shows a live preview
-;; as blocks accumulate.  Blocks can prompt for runtime values and can be
-;; negated.  Press RET to copy the composed prompt to the kill ring, or q
-;; (or C-g) to abort.
+;; as the prompt is built.
 ;;
-;; Finished prompts are remembered in `promptu-history'.  Inside the menu,
-;; step back through past prompts with M-p / M-n, or browse them with M-r;
-;; the recalled prompt becomes the live session, so it can be edited and
-;; re-finished.  `M-x promptu-recall' picks a past prompt and copies it to
-;; the kill ring without opening the menu.  History is kept in memory by
-;; default; set `promptu-history-file' to persist it across sessions.
+;; Press `RET` to copy the composed prompt to the kill ring, then paste it into
+;; your agent (e.g. `agent-shell`) or anywhere else.
 ;;
-;; Keys inside the menu:
-;;   <block keys>  add that block at the point
-;;   -             arm "negate next" (the next block added is negated)
-;;   C-p / C-n     move the point up/down (at the end by default)
-;;   DEL           remove the entry above the point
-;;   M-e           edit the entry above the point (in a buffer when it
-;;                 spans multiple lines or is free text, else the minibuffer)
-;;   M-E           edit the whole prompt as free text (saved as one entry)
-;;   C-/           undo the last session change
-;;   C-M-/         redo an undone change
-;;   M-p           recall an older prompt from history
-;;   M-n           recall a newer prompt (or return to the in-progress draft)
-;;   M-r           browse history and load a past prompt
-;;   RET           finish: copy the composed prompt to the kill ring
-;;   q / C-g       abort with no output
+;; See the README for full usage instructions, or just start using promptu!
 ;;
-;; See `promptu-blocks' to customize the available blocks.
+;; Example:
+;;
+;; Pressing `r c - P` triggers the built-in blocks `review`, `commit`, then arms
+;; `-` and adds a negated `push`. This composes (with the default separator) a
+;; bulleted prompt:
+;;
+;;   - review your changes
+;;   - commit
+;;   - don't push
+
 
 ;;; Code:
 

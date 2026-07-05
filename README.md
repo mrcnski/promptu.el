@@ -16,8 +16,8 @@ M-x promptu
 
 <img src="screenshot.png" alt="promptu transient menu showing blocks, controls, and a live preview" width="300">
 
-Pick building blocks one at a time. The menu stays open and shows a live
-preview as blocks accumulate.
+Pick building blocks one at a time. The menu stays open and shows a live preview
+as the prompt is built.
 
 Press `RET` to copy the composed prompt to the kill ring, then paste it into
 your agent (e.g. `agent-shell`) or anywhere else.
@@ -72,8 +72,9 @@ It picks a past prompt and copies it straight to the kill ring.
 
 ## Example
 
-Adding `review`, `commit`, then arming `-` and adding `push` composes (with the
-default separator) a bulleted list:
+Pressing `r c - P` triggers the built-in blocks `review`, `commit`, then arms
+`-` and adds a negated `push`. This composes (with the default separator) a
+bulleted list:
 
 ```
 - review your changes
