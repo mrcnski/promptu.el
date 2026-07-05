@@ -901,12 +901,8 @@ must come from a `transient--do-*' function."
   ["Blocks"
    :class transient-column
    :setup-children promptu--block-suffixes]
-  ["Controls"
+  ["Edit"
    ("-"   "negate next" promptu--toggle-negate :transient t)
-   ("C-p" "point up"   promptu--point-up
-    :inapt-if promptu--point-up-inapt-p :transient t)
-   ("C-n" "point down" promptu--point-down
-    :inapt-if-nil promptu--point :transient t)
    ("DEL" promptu--remove-entry
     :description promptu--remove-description
     :inapt-if-not promptu--target-entry :transient t)
@@ -916,8 +912,12 @@ must come from a `transient--do-*' function."
     :transient promptu--do-edit-entry)
    ("M-E" "edit all" promptu--edit-prompt :inapt-if-nil promptu--session)
    ("C-/"   "undo" promptu--undo :inapt-if-nil promptu--undo-stack :transient t)
-   ("C-M-/" "redo" promptu--redo :inapt-if-nil promptu--redo-stack :transient t)
-   ("q"   "abort"       transient-quit-one)]
+   ("C-M-/" "redo" promptu--redo :inapt-if-nil promptu--redo-stack :transient t)]
+  ["Point"
+   ("C-p" "up"   promptu--point-up
+    :inapt-if promptu--point-up-inapt-p :transient t)
+   ("C-n" "down" promptu--point-down
+    :inapt-if-nil promptu--point :transient t)]
   ["History"
    ("M-p" "older"  promptu--history-prev
     :inapt-if promptu--history-prev-inapt-p :transient t)
@@ -926,7 +926,8 @@ must come from a `transient--do-*' function."
    ("M-r" "browse" promptu--history-pick
     :inapt-if-nil promptu-history :transient t)]
   [:description promptu--preview
-                ("RET" "finish (copy)" promptu--finish :inapt-if-nil promptu--session)]
+                ("RET" "finish (copy)" promptu--finish :inapt-if-nil promptu--session)
+                ("q"   "abort"         transient-quit-one)]
   (interactive)
   (promptu--reset)
   (promptu--history-ensure-loaded)
