@@ -46,10 +46,11 @@
 ;; default; set `promptu-history-file' to persist it across sessions.
 ;;
 ;; Keys inside the menu:
-;;   <block keys>  add that block
+;;   <block keys>  add that block at the point
 ;;   -             arm "negate next" (the next block added is negated)
-;;   DEL           remove the most recently added block
-;;   M-e           edit the most recently added entry (in a buffer when it
+;;   C-p / C-n     move the point up/down (at the end by default)
+;;   DEL           remove the entry above the point
+;;   M-e           edit the entry above the point (in a buffer when it
 ;;                 spans multiple lines or is free text, else the minibuffer)
 ;;   M-E           edit the whole prompt as free text (saved as one entry)
 ;;   C-/           undo the last session change
@@ -182,6 +183,11 @@ is shown distinctly so it is clear that part is one free-form unit rather
 than a discrete building block.  Inherit or override to taste."
   :group 'promptu)
 
+(defface promptu-point-face
+  '((t :inherit warning :weight bold))
+  "Face for the point marker shown in the preview while navigating."
+  :group 'promptu)
+
 ;;; Pure compose core
 
 (defun promptu--strip-surrounding-newlines (text)
@@ -237,37 +243,50 @@ plain block, represented as the bare string TEXT."
   "Non-nil when session ENTRY is a free-text region rather than a block."
   (and (not (stringp entry)) (plist-get entry :free) t))
 
-(defun promptu--edit-last-needs-buffer-p (entry)
+(defun promptu--edit-needs-buffer-p (entry)
   "Non-nil when ENTRY should be edited in a buffer, not the minibuffer.
 True for free-text regions and for any entry whose text spans multiple
 lines, since the one-line minibuffer handles neither well."
   (or (promptu--entry-free-p entry)
       (and (string-search "\n" (promptu--entry-text entry)) t)))
 
+(defun promptu--lead-in (entry first)
+  "Return the text emitted before ENTRY in the composed prompt.
+The first entry gets the separator's trailing line prefix, later ones
+the full `promptu-separator' -- except free-text entries, which carry
+their own prefix (or none), so theirs is dropped from the lead-in."
+  (let ((prefix (promptu--line-prefix promptu-separator))
+        (free (promptu--entry-free-p entry)))
+    (cond (first (if free "" prefix))
+          (free (substring promptu-separator
+                           0 (- (length promptu-separator) (length prefix))))
+          (t promptu-separator))))
+
 (defun promptu--compose (entries)
   "Join ENTRIES into the composed prompt.
-Each entry is a session entry (see `promptu--entry-text').  Entries are
-joined with `promptu-separator'; when the separator contains a newline,
-its trailing line prefix is also applied to the first entry -- unless
-that entry is free text, which carries its own prefix (or none)."
-  (if (null entries)
-      ""
-    (concat (if (promptu--entry-free-p (car entries))
-                ""
-              (promptu--line-prefix promptu-separator))
-            (string-join (mapcar #'promptu--entry-text entries)
-                         promptu-separator))))
+Each entry is a session entry (see `promptu--entry-text'), preceded by
+its `promptu--lead-in'."
+  (string-join
+   (seq-map-indexed (lambda (entry idx)
+                      (concat (promptu--lead-in entry (zerop idx))
+                              (promptu--entry-text entry)))
+                    entries)))
 
 ;;; Session state
 
 (defvar promptu--session nil
   "Ordered list of entries for the current compose session.
-Oldest first; the most recently added entry is last.  Each entry is
-either a bare string (a building block) or a free-text region -- a plist
-`(:text STRING :free t)' produced by `M-E'; see `promptu--make-entry'.")
+Each entry is either a bare string (a building block) or a free-text
+region -- a plist `(:text STRING :free t)' produced by `M-E'; see
+`promptu--make-entry'.")
 
 (defvar promptu--negate-next nil
   "When non-nil, the next block added is negated, then this resets to nil.")
+
+(defvar promptu--point nil
+  "Point into `promptu--session': the gap index before entry N, or nil
+for the end of the list (the default).  Blocks insert at the point;
+DEL and M-e act on the entry above it.")
 
 (defvar promptu-history nil
   "List of past prompts, most recent first.
@@ -290,54 +309,61 @@ recent entry.")
   "Non-nil once persisted history has been loaded from `promptu-history-file'.")
 
 (defvar promptu--undo-stack nil
-  "Stack of prior `promptu--session' states, newest first, for undo.
-Each element is a session snapshot; `promptu--checkpoint' pushes one
-before a session-changing command runs.")
+  "Stack of prior (POINT . SESSION) states, newest first, for undo.
+`promptu--checkpoint' pushes one before a session-changing command runs.")
 
 (defvar promptu--redo-stack nil
-  "Stack of session states undone via `promptu--undo', for redo.
+  "Stack of (POINT . SESSION) states undone via `promptu--undo', for redo.
 Cleared by `promptu--checkpoint' whenever a new change is made.")
 
 (defun promptu--reset ()
-  "Clear the compose session, negate-next flag, history navigation, and undo.
+  "Clear the compose session, point, negate flag, history navigation, and undo.
 Does not clear `promptu-history' itself."
   (setq promptu--session nil
+        promptu--point nil
         promptu--negate-next nil
         promptu--history-index nil
         promptu--history-stash nil
         promptu--undo-stack nil
         promptu--redo-stack nil))
 
+(defun promptu--snapshot ()
+  "Return the current (POINT . SESSION) state for the undo/redo stacks."
+  (cons promptu--point (copy-sequence promptu--session)))
+
+(defun promptu--restore (state)
+  "Restore a (POINT . SESSION) STATE and leave history navigation."
+  (setq promptu--point (car state)
+        promptu--session (cdr state)
+        promptu--history-index nil
+        promptu--history-stash nil))
+
 (defun promptu--checkpoint ()
-  "Save the current session for undo, discarding any pending redo history.
+  "Save the current state for undo, discarding any pending redo history.
 Call at the start of a command, before it mutates `promptu--session', so
 the change can be reverted.  A new change invalidates the redo stack."
-  (push (copy-sequence promptu--session) promptu--undo-stack)
+  (push (promptu--snapshot) promptu--undo-stack)
   (setq promptu--redo-stack nil))
 
 (defun promptu--undo ()
-  "Restore the session to before the last change.
-Pushes the current session onto the redo stack and leaves history
+  "Restore the session and point to before the last change.
+Pushes the current state onto the redo stack and leaves history
 navigation.  Reports when there is nothing to undo."
   (interactive)
   (if (null promptu--undo-stack)
       (message "promptu: nothing to undo")
-    (push (copy-sequence promptu--session) promptu--redo-stack)
-    (setq promptu--session (pop promptu--undo-stack)
-          promptu--history-index nil
-          promptu--history-stash nil)))
+    (push (promptu--snapshot) promptu--redo-stack)
+    (promptu--restore (pop promptu--undo-stack))))
 
 (defun promptu--redo ()
   "Reapply the most recently undone change.
-Pushes the current session onto the undo stack and leaves history
+Pushes the current state onto the undo stack and leaves history
 navigation.  Reports when there is nothing to redo."
   (interactive)
   (if (null promptu--redo-stack)
       (message "promptu: nothing to redo")
-    (push (copy-sequence promptu--session) promptu--undo-stack)
-    (setq promptu--session (pop promptu--redo-stack)
-          promptu--history-index nil
-          promptu--history-stash nil)))
+    (push (promptu--snapshot) promptu--undo-stack)
+    (promptu--restore (pop promptu--redo-stack))))
 
 (defun promptu--forget-undo ()
   "Discard undo/redo history.
@@ -346,6 +372,35 @@ prompt, so undo stays scoped to edits of the prompt currently shown and
 never reverts a change made to a different one."
   (setq promptu--undo-stack nil
         promptu--redo-stack nil))
+
+;;; Point
+
+(defun promptu--point-set (i)
+  "Move the point to gap I, clamped to the session; the end is stored as nil."
+  (setq promptu--point (and (< i (length promptu--session)) (max 0 i))))
+
+(defun promptu--point-index ()
+  "Effective gap index of the point (`promptu--point', or the session end)."
+  (or promptu--point (length promptu--session)))
+
+(defun promptu--target-entry ()
+  "Entry above the point, or nil when the point is at the start (or empty)."
+  (let ((i (promptu--point-index)))
+    (and (> i 0) (nth (1- i) promptu--session))))
+
+(defun promptu--point-up ()
+  "Move the point up one entry."
+  (interactive)
+  (promptu--point-set (1- (promptu--point-index))))
+
+(defun promptu--point-down ()
+  "Move the point down one entry."
+  (interactive)
+  (promptu--point-set (1+ (promptu--point-index))))
+
+(defun promptu--point-up-inapt-p ()
+  "Non-nil when `C-p' would do nothing: empty session or point at the start."
+  (or (null promptu--session) (zerop (promptu--point-index))))
 
 (defun promptu--placeholder-values (template placeholders)
   "Prompt the minibuffer for each of PLACEHOLDERS that occurs in TEMPLATE.
@@ -359,50 +414,58 @@ in TEMPLATE is not prompted for."
                 placeholders)))
 
 (defun promptu--add (block)
-  "Resolve BLOCK and append its emitted text to the session.
+  "Resolve BLOCK and insert its emitted text at the point.
 Picks the affirmative or :negative template per `promptu--negate-next',
 prompts only for placeholders that appear in that template, substitutes
-them, then resets the negate flag."
+them, then resets the negate flag.  The point advances past the new
+entry."
   (let* ((negate promptu--negate-next)
          (template (promptu--resolve block negate))
          (values (promptu--placeholder-values template (plist-get block :placeholders)))
-         (resolved (promptu--substitute template values)))
+         (resolved (promptu--substitute template values))
+         (i (promptu--point-index)))
     (promptu--checkpoint)
-    (setq promptu--session (append promptu--session (list resolved))
+    (setq promptu--session (append (seq-take promptu--session i)
+                                   (list resolved)
+                                   (seq-drop promptu--session i))
           promptu--negate-next nil
-          promptu--history-index nil)))
+          promptu--history-index nil)
+    (promptu--point-set (1+ i))))
 
-(defun promptu--remove-last ()
-  "Remove the most recently added block from the session.
-Safe no-op when the session is empty."
+(defun promptu--remove-entry ()
+  "Remove the entry above the point.
+Safe no-op when there is nothing above it."
   (interactive)
-  (when promptu--session
+  (when (promptu--target-entry)
     (promptu--checkpoint)
-    (setq promptu--session (butlast promptu--session)
-          promptu--history-index nil)))
+    (let ((i (promptu--point-index)))
+      (setq promptu--session (append (seq-take promptu--session (1- i))
+                                     (seq-drop promptu--session i))
+            promptu--history-index nil)
+      (promptu--point-set (1- i)))))
 
-(defun promptu--replace-last-entry (text free)
-  "Replace the session's last entry with TEXT, marked free-text when FREE.
-Checkpoints for undo and leaves history navigation.  Assumes a non-empty
-session."
+(defun promptu--replace-entry (n text free)
+  "Replace session entry N with TEXT, marked free-text when FREE.
+Checkpoints for undo and leaves history navigation."
   (promptu--checkpoint)
   (setq promptu--session
-        (append (butlast promptu--session)
-                (list (promptu--make-entry text free)))
+        (append (seq-take promptu--session n)
+                (list (promptu--make-entry text free))
+                (seq-drop promptu--session (1+ n)))
         promptu--history-index nil))
 
-(defun promptu--edit-last ()
-  "Edit the most recently added entry, preserving whether it is free text.
+(defun promptu--edit-entry ()
+  "Edit the entry above the point, preserving whether it is free text.
 A single-line block is edited in the minibuffer, pre-filled with its
 current text.  A free-text region or a multi-line entry is edited in a
 dedicated buffer instead, since the minibuffer handles neither well.
-Safe no-op when the session is empty."
+Safe no-op when there is nothing above the point."
   (interactive)
-  (when promptu--session
-    (let* ((entry (car (last promptu--session)))
-           (text (promptu--entry-text entry))
-           (free (promptu--entry-free-p entry)))
-      (if (promptu--edit-last-needs-buffer-p entry)
+  (when-let ((entry (promptu--target-entry)))
+    (let ((n (1- (promptu--point-index)))
+          (text (promptu--entry-text entry))
+          (free (promptu--entry-free-p entry)))
+      (if (promptu--edit-needs-buffer-p entry)
           ;; Open after this command returns and the transient has torn
           ;; down, as with `promptu--edit-prompt'.
           (run-at-time
@@ -410,8 +473,8 @@ Safe no-op when the session is empty."
            (lambda ()
              (promptu--edit-open
               text
-              (lambda (edited) (promptu--replace-last-entry edited free))
-              (concat "Editing the last entry.  "
+              (lambda (edited) (promptu--replace-entry n edited free))
+              (concat "Editing the entry.  "
                       "\\[promptu--edit-commit] save, "
                       "\\[promptu--edit-abort] cancel."))))
         (let ((edited (promptu--strip-surrounding-newlines
@@ -420,7 +483,7 @@ Safe no-op when the session is empty."
           ;; removing an entry is DEL's job.
           (if (string-blank-p edited)
               (message "promptu: empty; nothing saved")
-            (promptu--replace-last-entry edited free)))))))
+            (promptu--replace-entry n edited free)))))))
 
 (defun promptu--toggle-negate ()
   "Toggle the negate-next flag."
@@ -516,7 +579,8 @@ Recalling starts a fresh undo slate (see `promptu--forget-undo')."
               0
             (min (1+ promptu--history-index) (1- (length promptu-history))))
           promptu--session
-          (copy-sequence (nth promptu--history-index promptu-history)))))
+          (copy-sequence (nth promptu--history-index promptu-history))
+          promptu--point nil)))
 
 (defun promptu--history-next ()
   "Recall a newer prompt from history into the session.
@@ -531,12 +595,14 @@ starts a fresh undo slate."
     (promptu--forget-undo)
     (setq promptu--session promptu--history-stash
           promptu--history-stash nil
-          promptu--history-index nil))
+          promptu--history-index nil
+          promptu--point nil))
    (t
     (promptu--forget-undo)
     (setq promptu--history-index (1- promptu--history-index)
           promptu--session
-          (copy-sequence (nth promptu--history-index promptu-history))))))
+          (copy-sequence (nth promptu--history-index promptu-history))
+          promptu--point nil))))
 
 (defun promptu--history-pick ()
   "Pick a past prompt via completion and load it into the session.
@@ -546,7 +612,8 @@ stays scoped to the loaded prompt."
   (when-let ((session (promptu--history-read)))
     (promptu--forget-undo)
     (setq promptu--session (copy-sequence session)
-          promptu--history-index nil)))
+          promptu--history-index nil
+          promptu--point nil)))
 
 ;;;###autoload
 (defun promptu-recall ()
@@ -593,6 +660,7 @@ it round-trips through `promptu--compose' exactly as edited.
 Checkpoints for undo and leaves history navigation."
   (promptu--checkpoint)
   (setq promptu--session (list (promptu--make-entry text t))
+        promptu--point nil
         promptu--history-index nil))
 
 (defun promptu--edit-prompt ()
@@ -679,7 +747,7 @@ A no-op (no kill-ring change) when the session is empty."
 ;;; Transient menu
 
 (defconst promptu--reserved-keys
-  '("-" "RET" "DEL" "M-e" "M-E" "M-p" "M-n" "M-r" "C-/" "C-M-/" "q")
+  '("-" "RET" "DEL" "M-e" "M-E" "M-p" "M-n" "M-r" "C-p" "C-n" "C-/" "C-M-/" "q")
   "Keys reserved for menu control; block keys must avoid these.")
 
 (defun promptu--reserved-key-p (key)
@@ -747,20 +815,28 @@ collide on a description-derived command symbol."
   "Render the composed prompt, facing free-text regions distinctly.
 Each entry's text is faced with `promptu-free-text-face' when it is a
 free-text region and `promptu-preview-face' otherwise, so a free-form
-region stands out from the surrounding blocks.  Like `promptu--compose',
-no line prefix is added when the first entry is free text."
-  (concat
-   (propertize (if (promptu--entry-free-p (car promptu--session))
-                   ""
-                 (promptu--line-prefix promptu-separator))
-               'face 'promptu-preview-face)
-   (mapconcat (lambda (entry)
-                (propertize (promptu--entry-text entry)
-                            'face (if (promptu--entry-free-p entry)
-                                      'promptu-free-text-face
-                                    'promptu-preview-face)))
-              promptu--session
-              (propertize promptu-separator 'face 'promptu-preview-face))))
+region stands out from the surrounding blocks.  Entries get the same
+lead-in as in `promptu--compose'.  A moved point shows as a marker at
+its gap, on its own line when the separator is multi-line."
+  (let* ((gap promptu--point)
+         (own-line (and gap (string-search "\n" promptu-separator)))
+         (marker (and gap (propertize "▮" 'face 'promptu-point-face))))
+    (concat
+     (when (and gap (zerop gap))
+       (concat marker (and own-line "\n")))
+     (string-join
+      (seq-map-indexed
+       (lambda (entry idx)
+         (concat
+          (propertize (promptu--lead-in entry (zerop idx))
+                      'face 'promptu-preview-face)
+          (propertize (promptu--entry-text entry)
+                      'face (if (promptu--entry-free-p entry)
+                                'promptu-free-text-face
+                              'promptu-preview-face))
+          (when (and gap (= (1+ idx) gap))
+            (concat (and own-line "\n") marker))))
+       promptu--session)))))
 
 (defun promptu--preview ()
   "Render the live preview block shown at the bottom of the menu."
@@ -782,17 +858,17 @@ which act on the last entry, act on the entire prompt."
        (null (cdr promptu--session))
        (promptu--entry-free-p (car promptu--session))))
 
-(defun promptu--remove-last-description (&rest _)
-  "Dynamic label for the `DEL' suffix.
-Reflects that removing the last entry removes the whole prompt when it is
-a single free-text region."
-  (if (promptu--single-free-text-p) "remove all (free text)" "remove last"))
+(defun promptu--remove-description (&rest _)
+  "Dynamic label for the `DEL' suffix."
+  (cond ((promptu--single-free-text-p) "remove all (free text)")
+        (promptu--point "remove at point")
+        (t "remove last")))
 
-(defun promptu--edit-last-description (&rest _)
-  "Dynamic label for the `M-e' suffix.
-Reflects that editing the last entry edits the whole prompt when it is a
-single free-text region."
-  (if (promptu--single-free-text-p) "edit all (free text)" "edit last"))
+(defun promptu--edit-description (&rest _)
+  "Dynamic label for the `M-e' suffix."
+  (cond ((promptu--single-free-text-p) "edit all (free text)")
+        (promptu--point "edit at point")
+        (t "edit last")))
 
 (defun promptu--history-prev-inapt-p ()
   "Non-nil when `M-p' would do nothing.
@@ -802,19 +878,19 @@ entry so stepping older would only clamp in place."
       (and promptu--history-index
            (= promptu--history-index (1- (length promptu-history))))))
 
-(defun promptu--do-edit-last ()
-  "Transient pre-command for `M-e' (`promptu--edit-last').
+(defun promptu--do-edit-entry ()
+  "Transient pre-command for `M-e' (`promptu--edit-entry').
 Stay transient for a quick minibuffer edit, but exit -- like `M-E' --
-when the last entry needs the buffer editor, so the menu tears down and
-the edit buffer can take over input.  Transient uses this as a
+when the target entry needs the buffer editor, so the menu tears down
+and the edit buffer can take over input.  Transient uses this as a
 suffix's pre-command because its name contains `--do-'; the return value
 must come from a `transient--do-*' function."
   ;; transient--do-{exit,call} are internal but the canonical pre-command
   ;; building blocks, stable since well before our transient 0.5.0 floor.
-  (if (and promptu--session
-           (promptu--edit-last-needs-buffer-p (car (last promptu--session))))
-      (transient--do-exit)
-    (transient--do-call)))
+  (let ((entry (promptu--target-entry)))
+    (if (and entry (promptu--edit-needs-buffer-p entry))
+        (transient--do-exit)
+      (transient--do-call))))
 
 ;;;###autoload
 (transient-define-prefix promptu ()
@@ -827,13 +903,17 @@ must come from a `transient--do-*' function."
    :setup-children promptu--block-suffixes]
   ["Controls"
    ("-"   "negate next" promptu--toggle-negate :transient t)
-   ("DEL" promptu--remove-last
-    :description promptu--remove-last-description
-    :inapt-if-nil promptu--session :transient t)
-   ("M-e" promptu--edit-last
-    :description promptu--edit-last-description
-    :inapt-if-nil promptu--session
-    :transient promptu--do-edit-last)
+   ("C-p" "point up"   promptu--point-up
+    :inapt-if promptu--point-up-inapt-p :transient t)
+   ("C-n" "point down" promptu--point-down
+    :inapt-if-nil promptu--point :transient t)
+   ("DEL" promptu--remove-entry
+    :description promptu--remove-description
+    :inapt-if-not promptu--target-entry :transient t)
+   ("M-e" promptu--edit-entry
+    :description promptu--edit-description
+    :inapt-if-not promptu--target-entry
+    :transient promptu--do-edit-entry)
    ("M-E" "edit all" promptu--edit-prompt :inapt-if-nil promptu--session)
    ("C-/"   "undo" promptu--undo :inapt-if-nil promptu--undo-stack :transient t)
    ("C-M-/" "redo" promptu--redo :inapt-if-nil promptu--redo-stack :transient t)

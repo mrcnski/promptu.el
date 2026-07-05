@@ -90,6 +90,7 @@
 (defmacro promptu-test--with-session (&rest body)
   "Run BODY with a fresh, isolated promptu session."
   `(let ((promptu--session nil)
+         (promptu--point nil)
          (promptu--negate-next nil)
          (promptu--undo-stack nil)
          (promptu--redo-stack nil)
@@ -159,12 +160,12 @@
   (promptu-test--with-session
    (promptu--add '(:text "a"))
    (promptu--add '(:text "b"))
-   (promptu--remove-last)
+   (promptu--remove-entry)
    (should (equal promptu--session '("a")))))
 
 (ert-deftest promptu-remove-last-empty-noop ()
   (promptu-test--with-session
-   (promptu--remove-last)
+   (promptu--remove-entry)
    (should (null promptu--session))))
 
 (ert-deftest promptu-edit-last-replaces-last-entry ()
@@ -172,7 +173,7 @@
    (promptu--add '(:text "a"))
    (promptu--add '(:text "b"))
    (cl-letf (((symbol-function 'read-string) (lambda (&rest _) "B-edited")))
-     (promptu--edit-last))
+     (promptu--edit-entry))
    (should (equal promptu--session '("a" "B-edited")))))
 
 (ert-deftest promptu-edit-last-prefills-current-value ()
@@ -184,14 +185,14 @@
                 (lambda (_prompt &optional initial &rest _)
                   (setq seen-initial initial)
                   "kept")))
-       (promptu--edit-last))
+       (promptu--edit-entry))
      (should (equal seen-initial "original")))))
 
 (ert-deftest promptu-edit-last-empty-noop ()
   (promptu-test--with-session
    (cl-letf (((symbol-function 'read-string)
               (lambda (&rest _) (error "should not prompt on empty session"))))
-     (promptu--edit-last))
+     (promptu--edit-entry))
    (should (null promptu--session))))
 
 (ert-deftest promptu-toggle-negate ()
@@ -204,10 +205,12 @@
 (ert-deftest promptu-reset-clears-all ()
   (promptu-test--with-session
    (promptu--add '(:text "a"))
-   (setq promptu--negate-next t)
+   (setq promptu--negate-next t
+         promptu--point 0)
    (promptu--reset)
    (should (null promptu--session))
-   (should (null promptu--negate-next))))
+   (should (null promptu--negate-next))
+   (should (null promptu--point))))
 
 ;;; Finalize (R9, R11, AE3)
 
@@ -318,6 +321,8 @@ so users can extend it with (append promptu-default-blocks ...)."
   (should (promptu--reserved-key-p "M-p"))
   (should (promptu--reserved-key-p "M-n"))
   (should (promptu--reserved-key-p "M-r"))
+  (should (promptu--reserved-key-p "C-p"))
+  (should (promptu--reserved-key-p "C-n"))
   (should (promptu--reserved-key-p "C-/"))
   (should (promptu--reserved-key-p "C-M-/"))
   (should (promptu--reserved-key-p "q"))
@@ -337,6 +342,7 @@ so users can extend it with (append promptu-default-blocks ...)."
          (promptu--undo-stack nil)
          (promptu--redo-stack nil)
          (promptu--session nil)
+         (promptu--point nil)
          (promptu--negate-next nil)
          (promptu-negation-prefix "don't ")
          (promptu-separator "\n- "))
@@ -432,7 +438,7 @@ so users can extend it with (append promptu-default-blocks ...)."
   (promptu-test--with-history
    (setq promptu-history '(("a" "b")))
    (promptu--history-prev)
-   (promptu--remove-last)
+   (promptu--remove-entry)
    (should (null promptu--history-index))
    (should (equal promptu--session '("a")))))
 
@@ -533,7 +539,20 @@ so users can extend it with (append promptu-default-blocks ...)."
   "Compose reads text from both bare-string blocks and :text plists."
   (let ((promptu-separator "\n- "))
     (should (equal (promptu--compose (list "review" '(:text "err:\nx" :free t)))
-                   "- review\n- err:\nx"))))
+                   "- review\nerr:\nx"))))
+
+(ert-deftest promptu-compose-no-prefix-before-mid-list-free-text ()
+  "A free entry after blocks keeps its own prefix; none is prepended.
+Regression: inserting blocks before an M-E entry doubled the bullet."
+  (let ((promptu-separator "\n- "))
+    (should (equal (promptu--compose (list "commit" '(:text "- push" :free t)))
+                   "- commit\n- push"))
+    (should (equal (promptu--compose (list "commit" '(:text "push" :free t)))
+                   "- commit\npush")))
+  (let ((promptu-separator ", "))
+    ;; no line prefix to drop: the full separator still applies
+    (should (equal (promptu--compose (list "commit" '(:text "push" :free t)))
+                   "commit, push"))))
 
 (ert-deftest promptu-compose-free-text-first-no-prefix ()
   "No line prefix before leading free text; later blocks still separate."
@@ -543,17 +562,19 @@ so users can extend it with (append promptu-default-blocks ...)."
 
 (ert-deftest promptu-edit-last-needs-buffer-p ()
   "Free-text and multi-line entries need the buffer; single-line blocks don't."
-  (should-not (promptu--edit-last-needs-buffer-p "single line"))
-  (should (promptu--edit-last-needs-buffer-p "two\nlines"))
-  (should (promptu--edit-last-needs-buffer-p '(:text "ft" :free t))))
+  (should-not (promptu--edit-needs-buffer-p "single line"))
+  (should (promptu--edit-needs-buffer-p "two\nlines"))
+  (should (promptu--edit-needs-buffer-p '(:text "ft" :free t))))
 
-(ert-deftest promptu-replace-last-entry-preserves-kind ()
+(ert-deftest promptu-replace-entry-preserves-kind ()
   (promptu-test--with-session
    (setq promptu--session '("a" "b"))
-   (promptu--replace-last-entry "B2" nil)
+   (promptu--replace-entry 1 "B2" nil)
    (should (equal promptu--session '("a" "B2")))
-   (promptu--replace-last-entry "B3" t)
-   (should (equal promptu--session '("a" (:text "B3" :free t))))))
+   (promptu--replace-entry 1 "B3" t)
+   (should (equal promptu--session '("a" (:text "B3" :free t))))
+   (promptu--replace-entry 0 "A2" nil)
+   (should (equal promptu--session '("A2" (:text "B3" :free t))))))
 
 (ert-deftest promptu-set-whole-entry-marks-free-text ()
   "M-E collapses to one verbatim free-text entry that round-trips."
@@ -572,7 +593,7 @@ so users can extend it with (append promptu-default-blocks ...)."
    (cl-letf (((symbol-function 'run-at-time)
               (lambda (&rest _) (error "should not defer a single-line block")))
              ((symbol-function 'read-string) (lambda (&rest _) "B-edited")))
-     (promptu--edit-last))
+     (promptu--edit-entry))
    (should (equal promptu--session '("a" "B-edited")))))
 
 (ert-deftest promptu-edit-last-multiline-block-defers-to-buffer ()
@@ -584,7 +605,7 @@ so users can extend it with (append promptu-default-blocks ...)."
                 (lambda (&rest _) (error "should not use minibuffer for multi-line")))
                ((symbol-function 'run-at-time)
                 (lambda (&rest _) (setq deferred t))))
-       (promptu--edit-last))
+       (promptu--edit-entry))
      (should deferred))))
 
 (ert-deftest promptu-edit-last-free-text-defers-to-buffer ()
@@ -596,7 +617,7 @@ so users can extend it with (append promptu-default-blocks ...)."
                 (lambda (&rest _) (error "should not use minibuffer for free text")))
                ((symbol-function 'run-at-time)
                 (lambda (&rest _) (setq deferred t))))
-       (promptu--edit-last))
+       (promptu--edit-entry))
      (should deferred))))
 
 (ert-deftest promptu-preview-body-faces-leading-prefix ()
@@ -626,14 +647,18 @@ so users can extend it with (append promptu-default-blocks ...)."
   (let ((promptu--session (list (promptu--make-entry "x" t))))
     (should (promptu--single-free-text-p))))
 
-(ert-deftest promptu-control-descriptions-reflect-free-text ()
-  "DEL/M-e labels switch to \"all (free text)\" for a single free-text entry."
-  (let ((promptu--session '("a" "b")))
-    (should (equal (promptu--remove-last-description) "remove last"))
-    (should (equal (promptu--edit-last-description) "edit last")))
-  (let ((promptu--session (list (promptu--make-entry "blob" t))))
-    (should (equal (promptu--remove-last-description) "remove all (free text)"))
-    (should (equal (promptu--edit-last-description) "edit all (free text)"))))
+(ert-deftest promptu-control-descriptions-reflect-state ()
+  "DEL/M-e labels follow the point and the single-free-text state."
+  (let ((promptu--session '("a" "b")) (promptu--point nil))
+    (should (equal (promptu--remove-description) "remove last"))
+    (should (equal (promptu--edit-description) "edit last")))
+  (let ((promptu--session '("a" "b")) (promptu--point 1))
+    (should (equal (promptu--remove-description) "remove at point"))
+    (should (equal (promptu--edit-description) "edit at point")))
+  (let ((promptu--session (list (promptu--make-entry "blob" t)))
+        (promptu--point nil))
+    (should (equal (promptu--remove-description) "remove all (free text)"))
+    (should (equal (promptu--edit-description) "edit all (free text)"))))
 
 (ert-deftest promptu-do-edit-last-exits-only-for-buffer-edit ()
   "The M-e pre-command stays transient for a minibuffer edit and exits for a
@@ -644,16 +669,21 @@ transient, so stub them to sentinels and check which one is chosen."
    (cl-letf (((symbol-function 'transient--do-call) (lambda () 'stay))
              ((symbol-function 'transient--do-exit) (lambda () 'exit)))
      ;; empty session: stay (nothing to edit, no crash on the nil entry)
-     (should (eq (promptu--do-edit-last) 'stay))
+     (should (eq (promptu--do-edit-entry) 'stay))
      ;; single-line block: stay (edits in the minibuffer)
      (setq promptu--session '("a" "b"))
-     (should (eq (promptu--do-edit-last) 'stay))
+     (should (eq (promptu--do-edit-entry) 'stay))
      ;; multi-line block: exit (goes to the buffer editor)
      (setq promptu--session '("a\nb"))
-     (should (eq (promptu--do-edit-last) 'exit))
+     (should (eq (promptu--do-edit-entry) 'exit))
      ;; free-text region: exit
      (setq promptu--session (list (promptu--make-entry "x" t)))
-     (should (eq (promptu--do-edit-last) 'exit)))))
+     (should (eq (promptu--do-edit-entry) 'exit))
+     ;; the point retargets the check: multi-line above the point, plain last
+     (setq promptu--session '("a\nb" "c") promptu--point 1)
+     (should (eq (promptu--do-edit-entry) 'exit))
+     (setq promptu--point nil)
+     (should (eq (promptu--do-edit-entry) 'stay)))))
 
 (ert-deftest promptu-history-round-trips-free-text-entry ()
   "A free-text region keeps its provenance when persisted and reloaded."
@@ -696,7 +726,7 @@ transient, so stub them to sentinels and check which one is chosen."
   (promptu-test--with-session
    (setq promptu--session '("a"))
    (cl-letf (((symbol-function 'read-string) (lambda (&rest _) "\nedited\n")))
-     (promptu--edit-last))
+     (promptu--edit-entry))
    (should (equal promptu--session '("edited")))))
 
 (ert-deftest promptu-edit-last-blank-is-noop ()
@@ -704,7 +734,7 @@ transient, so stub them to sentinels and check which one is chosen."
   (promptu-test--with-session
    (setq promptu--session '("a" "b"))
    (cl-letf (((symbol-function 'read-string) (lambda (&rest _) "   \n")))
-     (promptu--edit-last))
+     (promptu--edit-entry))
    (should (equal promptu--session '("a" "b")))
    (should (null promptu--undo-stack))))
 
@@ -720,6 +750,159 @@ transient, so stub them to sentinels and check which one is chosen."
     (should-not (promptu--history-prev-inapt-p)))         ; room to step older
   (let ((promptu-history '(("a") ("b") ("c"))) (promptu--history-index 2))
     (should (promptu--history-prev-inapt-p))))            ; already at the oldest
+
+;;; Point
+
+(ert-deftest promptu-point-set-normalizes ()
+  "End (or past it) stores nil; negative clamps to the start."
+  (let ((promptu--session '("a" "b")) (promptu--point nil))
+    (promptu--point-set 1)
+    (should (equal promptu--point 1))
+    (promptu--point-set 2)
+    (should (null promptu--point))
+    (promptu--point-set -1)
+    (should (equal promptu--point 0))))
+
+(ert-deftest promptu-target-entry ()
+  "Target is the entry above the point; nil at the start or when empty."
+  (let ((promptu--session '("a" "b")) (promptu--point nil))
+    (should (equal (promptu--target-entry) "b"))
+    (setq promptu--point 1)
+    (should (equal (promptu--target-entry) "a"))
+    (setq promptu--point 0)
+    (should (null (promptu--target-entry))))
+  (let ((promptu--session nil) (promptu--point nil))
+    (should (null (promptu--target-entry)))))
+
+(ert-deftest promptu-point-up-down-walks-and-clamps ()
+  (promptu-test--with-session
+   (setq promptu--session '("a" "b"))
+   (promptu--point-up)
+   (should (equal promptu--point 1))
+   (promptu--point-up)
+   (should (equal promptu--point 0))
+   (promptu--point-up)                   ; clamp at the start
+   (should (equal promptu--point 0))
+   (promptu--point-down)
+   (should (equal promptu--point 1))
+   (promptu--point-down)                 ; back to the end
+   (should (null promptu--point))))
+
+(ert-deftest promptu-point-navigation-does-not-checkpoint ()
+  (promptu-test--with-session
+   (setq promptu--session '("a" "b"))
+   (promptu--point-up)
+   (promptu--point-down)
+   (should (null promptu--undo-stack))))
+
+(ert-deftest promptu-point-up-inapt-p ()
+  (let ((promptu--session nil) (promptu--point nil))
+    (should (promptu--point-up-inapt-p)))
+  (let ((promptu--session '("a")) (promptu--point nil))
+    (should-not (promptu--point-up-inapt-p)))
+  (let ((promptu--session '("a")) (promptu--point 0))
+    (should (promptu--point-up-inapt-p))))
+
+(ert-deftest promptu-add-inserts-at-point ()
+  (promptu-test--with-session
+   (setq promptu--session '("a" "c") promptu--point 1)
+   (promptu--add '(:text "b"))
+   (should (equal promptu--session '("a" "b" "c")))
+   (should (equal promptu--point 2))))
+
+(ert-deftest promptu-add-at-start ()
+  (promptu-test--with-session
+   (setq promptu--session '("b") promptu--point 0)
+   (promptu--add '(:text "a"))
+   (should (equal promptu--session '("a" "b")))
+   (should (equal promptu--point 1))))
+
+(ert-deftest promptu-remove-above-point ()
+  (promptu-test--with-session
+   (setq promptu--session '("a" "b" "c") promptu--point 2)
+   (promptu--remove-entry)
+   (should (equal promptu--session '("a" "c")))
+   (should (equal promptu--point 1))))
+
+(ert-deftest promptu-remove-at-start-noop ()
+  "Nothing above the point: session, point, and undo all untouched."
+  (promptu-test--with-session
+   (setq promptu--session '("a") promptu--point 0)
+   (promptu--remove-entry)
+   (should (equal promptu--session '("a")))
+   (should (equal promptu--point 0))
+   (should (null promptu--undo-stack))))
+
+(ert-deftest promptu-edit-above-point-minibuffer ()
+  (promptu-test--with-session
+   (setq promptu--session '("a" "b" "c") promptu--point 2)
+   (cl-letf (((symbol-function 'read-string) (lambda (&rest _) "B2")))
+     (promptu--edit-entry))
+   (should (equal promptu--session '("a" "B2" "c")))
+   (should (equal promptu--point 2))))
+
+(ert-deftest promptu-edit-above-point-buffer-captures-index ()
+  "The deferred buffer edit replaces the entry captured at command time."
+  (promptu-test--with-session
+   (setq promptu--session '("x\ny" "z") promptu--point 1)
+   (let (thunk)
+     (cl-letf (((symbol-function 'run-at-time)
+                (lambda (_time _repeat fn) (setq thunk fn)))
+               ((symbol-function 'promptu--edit-open)
+                (lambda (_text apply-fn _header) (funcall apply-fn "edited"))))
+       (promptu--edit-entry)
+       (funcall thunk)))
+   (should (equal promptu--session '("edited" "z")))))
+
+(ert-deftest promptu-undo-restores-point ()
+  "Undo returns the point to where it stood before the change."
+  (promptu-test--with-session
+   (setq promptu--session '("a" "b") promptu--point 1)
+   (promptu--add '(:text "x"))
+   (should (equal promptu--session '("a" "x" "b")))
+   (should (equal promptu--point 2))
+   (promptu--undo)
+   (should (equal promptu--session '("a" "b")))
+   (should (equal promptu--point 1))
+   (promptu--redo)
+   (should (equal promptu--session '("a" "x" "b")))
+   (should (equal promptu--point 2))))
+
+(ert-deftest promptu-point-resets-on-history-and-whole-edit ()
+  (promptu-test--with-history
+   (setq promptu-history '(("old"))
+         promptu--session '("a" "b")
+         promptu--point 1)
+   (promptu--history-prev)
+   (should (null promptu--point))
+   (setq promptu--session '("a" "b") promptu--point 1)
+   (promptu--set-whole-entry "all")
+   (should (null promptu--point))))
+
+(ert-deftest promptu-preview-marker-at-point ()
+  "Marker sits at the gap: own line for multi-line separators, else inline."
+  (let ((promptu-separator "\n- ")
+        (promptu--session '("a" "b")))
+    (let ((promptu--point 1))
+      (should (equal (substring-no-properties (promptu--preview-body))
+                     "- a\n▮\n- b")))
+    (let ((promptu--point 0))
+      (should (equal (substring-no-properties (promptu--preview-body))
+                     "▮\n- a\n- b")))
+    (let ((promptu--point nil))
+      (should-not (string-search "▮" (promptu--preview-body)))))
+  (let ((promptu-separator ", ")
+        (promptu--session '("a" "b"))
+        (promptu--point 1))
+    (should (equal (substring-no-properties (promptu--preview-body))
+                   "a▮, b"))))
+
+(ert-deftest promptu-preview-marker-face ()
+  (let* ((promptu-separator "\n- ")
+         (promptu--session '("a"))
+         (promptu--point 0)
+         (body (promptu--preview-body)))
+    (should (eq (get-text-property 0 'face body) 'promptu-point-face))))
 
 ;;; Undo / redo
 
@@ -767,11 +950,11 @@ transient, so stub them to sentinels and check which one is chosen."
    (let ((promptu-separator "\n- "))
      (promptu--add '(:text "a"))
      (promptu--add '(:text "b"))
-     (promptu--remove-last)               ; ("a")
+     (promptu--remove-entry)               ; ("a")
      (promptu--undo)
      (should (equal promptu--session '("a" "b")))
      (cl-letf (((symbol-function 'read-string) (lambda (&rest _) "B2")))
-       (promptu--edit-last))              ; ("a" "B2")
+       (promptu--edit-entry))              ; ("a" "B2")
      (should (equal promptu--session '("a" "B2")))
      (promptu--undo)
      (should (equal promptu--session '("a" "b")))

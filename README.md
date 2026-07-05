@@ -27,8 +27,9 @@ it into your agent (e.g. `agent-shell`) or anywhere else.
 |-----------|-----------------------------------------------------|
 | _block_   | Add that block to the prompt                         |
 | `-`       | Arm "negate next" — the next block added is negated  |
-| `DEL`     | Remove the most recently added block                |
-| `M-e`     | Edit the most recently added entry (in a buffer if it's multi-line or free text) |
+| `C-p` / `C-n` | Move the point up/down through entries          |
+| `DEL`     | Remove the last entry (or the entry above the point) |
+| `M-e`     | Edit the last entry (or the entry above the point)  |
 | `M-E`     | Edit the whole prompt as free text (saved as one entry) |
 | `C-/`     | Undo the last change to the prompt                  |
 | `C-M-/`   | Redo an undone change                               |
@@ -41,12 +42,17 @@ it into your agent (e.g. `agent-shell`) or anywhere else.
 Negation emits a block's explicit negative text when it defines one, otherwise
 its affirmative text prefixed with `promptu-negation-prefix` (default `don't `).
 
+### The point
+
+Initially the point is not visible and new blocks are appended to the end of the
+prompt.  To edit/remove earlier blocks, `C-p`/`C-n` can be used to move the
+point (it then shows as a `▮` in the preview).
+
 ### Editing the whole prompt
 
-`M-e` and `DEL` act on the most recent entry only. To edit or delete *any*
-part of the prompt, or to paste in multi-line text like an error message,
-press `M-E` to open the whole prompt in a buffer as free text. Edit freely,
-then `C-c C-c` to save or `C-c C-k` to cancel.
+`M-e` and `DEL` act on a single entry at a time.  To work on the prompt as a
+whole, press `M-E` to open the whole prompt in a buffer as free text.  Edit
+freely, then `C-c C-c` to save or `C-c C-k` to cancel.
 
 **Note:** Saving replaces the prompt with the buffer's contents as a single
 free-text entry, kept exactly as typed.  The previous block-by-block breakdown
