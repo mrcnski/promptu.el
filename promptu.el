@@ -133,7 +133,8 @@ Each block is a plist with these keys:
 
 When the separator contains a newline, the text following its last
 newline is also prepended to the first block as a line prefix, so the
-default \"\\n- \" produces a fully bulleted list."
+default \"\\n- \" produces a fully bulleted list.  Free text from a
+whole-prompt edit (\\`M-E') is exempt: it keeps exactly what was typed."
   :type 'string
   :group 'promptu)
 
@@ -217,11 +218,10 @@ placeholders, which the caller substitutes."
       (match-string 1 separator)
     ""))
 
-;; A session entry is either a plain string (a building block, the common
-;; case) or a plist `(:text STRING :free t)' marking a free-text region --
-;; text produced by editing the whole prompt with `M-E', which no longer
-;; maps onto a single block.  Blocks stay bare strings so existing history
-;; files (lists of strings) still load, treated as blocks.
+;; A session entry is either a bare string (a building block) or a plist
+;; `(:text STRING :free t)' -- free text from a whole-prompt edit (`M-E'),
+;; stored verbatim: compose never prepends the separator line prefix to
+;; it, so the prefix stays kept or deleted as the user left it.
 
 (defun promptu--make-entry (text free)
   "Return a session entry holding TEXT.
@@ -248,10 +248,13 @@ lines, since the one-line minibuffer handles neither well."
   "Join ENTRIES into the composed prompt.
 Each entry is a session entry (see `promptu--entry-text').  Entries are
 joined with `promptu-separator'; when the separator contains a newline,
-its trailing line prefix is also applied to the first entry."
+its trailing line prefix is also applied to the first entry -- unless
+that entry is free text, which carries its own prefix (or none)."
   (if (null entries)
       ""
-    (concat (promptu--line-prefix promptu-separator)
+    (concat (if (promptu--entry-free-p (car entries))
+                ""
+              (promptu--line-prefix promptu-separator))
             (string-join (mapcar #'promptu--entry-text entries)
                          promptu-separator))))
 
@@ -583,26 +586,13 @@ for reusing a prompt without opening the `promptu' menu."
 Committing runs the edit's apply function on the buffer contents; see
 `promptu--edit-open'.  The header line describes the specific edit.")
 
-(defun promptu--strip-line-prefix (text)
-  "Remove a single leading `promptu-separator' line prefix from TEXT.
-`promptu--compose' prepends the separator's trailing line prefix (e.g.
-\"- \") to the prompt's first line; stripping it here lets the edited
-text round-trip back through `promptu--compose' as a single entry.
-Returns TEXT unchanged when the separator has no line prefix or TEXT
-does not start with it."
-  (let ((prefix (promptu--line-prefix promptu-separator)))
-    (if (and (not (string-empty-p prefix))
-             (string-prefix-p prefix text))
-        (substring text (length prefix))
-      text)))
-
 (defun promptu--set-whole-entry (text)
   "Replace the whole session with TEXT as a single free-text entry.
-Strips the leading line prefix so TEXT round-trips through
-`promptu--compose', checkpoints for undo, and leaves history navigation."
+TEXT is stored verbatim (compose adds no line prefix to free text), so
+it round-trips through `promptu--compose' exactly as edited.
+Checkpoints for undo and leaves history navigation."
   (promptu--checkpoint)
-  (setq promptu--session
-        (list (promptu--make-entry (promptu--strip-line-prefix text) t))
+  (setq promptu--session (list (promptu--make-entry text t))
         promptu--history-index nil))
 
 (defun promptu--edit-prompt ()
@@ -610,8 +600,9 @@ Strips the leading line prefix so TEXT round-trips through
 The buffer is pre-filled with the composed prompt, so any part -- not
 just the last entry -- can be edited or deleted, and multi-line text
 \(such as a pasted error) can be added freely.  Saving collapses the
-whole prompt into a single free-text entry.  Safe no-op when the session
-is empty."
+whole prompt into a single free-text entry, kept verbatim -- including
+any separator line prefix kept or deleted in the edit.  Safe no-op when
+the session is empty."
   (interactive)
   (if (null promptu--session)
       (message "promptu: nothing to edit")
@@ -756,9 +747,12 @@ collide on a description-derived command symbol."
   "Render the composed prompt, facing free-text regions distinctly.
 Each entry's text is faced with `promptu-free-text-face' when it is a
 free-text region and `promptu-preview-face' otherwise, so a free-form
-region stands out from the surrounding blocks."
+region stands out from the surrounding blocks.  Like `promptu--compose',
+no line prefix is added when the first entry is free text."
   (concat
-   (propertize (promptu--line-prefix promptu-separator)
+   (propertize (if (promptu--entry-free-p (car promptu--session))
+                   ""
+                 (promptu--line-prefix promptu-separator))
                'face 'promptu-preview-face)
    (mapconcat (lambda (entry)
                 (propertize (promptu--entry-text entry)

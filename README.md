@@ -49,9 +49,10 @@ press `M-E` to open the whole prompt in a buffer as free text. Edit freely,
 then `C-c C-c` to save or `C-c C-k` to cancel.
 
 **Note:** Saving replaces the prompt with the buffer's contents as a single
-free-text entry, so the previous block-by-block breakdown is discarded. That
-entry is shown in a distinct color in the preview (see `promptu-free-text-face`)
-so it's clear that part is one free-form region rather than separate blocks.
+free-text entry, kept exactly as typed.  The previous block-by-block breakdown
+is discarded.  That entry is shown in a distinct color in the preview (see
+`promptu-free-text-face`) so it's clear that part is one free-form region rather
+than separate blocks.
 
 ### Undo
 

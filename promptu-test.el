@@ -496,35 +496,26 @@ so users can extend it with (append promptu-default-blocks ...)."
 
 ;;; Editing the whole prompt
 
-(ert-deftest promptu-strip-line-prefix-removes-bullet ()
-  (let ((promptu-separator "\n- "))
-    (should (equal (promptu--strip-line-prefix "- a\n- b") "a\n- b"))))
-
-(ert-deftest promptu-strip-line-prefix-absent-noop ()
-  "Text that does not start with the line prefix is returned unchanged."
-  (let ((promptu-separator "\n- "))
-    (should (equal (promptu--strip-line-prefix "a\n- b") "a\n- b"))))
-
-(ert-deftest promptu-strip-line-prefix-inline-separator-noop ()
-  "A separator with no line prefix strips nothing."
-  (let ((promptu-separator ", "))
-    (should (equal (promptu--strip-line-prefix "a, b, c") "a, b, c"))))
-
 (ert-deftest promptu-edit-round-trips-composed-prompt ()
-  "Stripping the prefix and recomposing as one entry returns the original."
+  "Free text recomposes verbatim, keeping the prefix the user kept."
   (let* ((promptu-separator "\n- ")
          (session '("review your changes" "commit" "don't push"))
-         (composed (promptu--compose session))
-         (entry (promptu--strip-line-prefix composed)))
-    (should (equal (promptu--compose (list entry)) composed))))
+         (composed (promptu--compose session)))
+    (should (equal (promptu--compose (list (promptu--make-entry composed t)))
+                   composed))))
+
+(ert-deftest promptu-edit-deleted-prefix-stays-deleted ()
+  "Free text whose leading prefix was deleted composes without it."
+  (let ((promptu-separator "\n- "))
+    (should (equal (promptu--compose (list (promptu--make-entry "a\n- b" t)))
+                   "a\n- b"))))
 
 (ert-deftest promptu-edit-collapses-multiline-into-one-entry ()
-  "A multi-line edit becomes a single entry, preserving inner newlines."
+  "A multi-line edit becomes a single verbatim entry."
   (let* ((promptu-separator "\n- ")
-         (text "- review\n- here is an error:\nTraceback\nValueError: x")
-         (entry (promptu--strip-line-prefix text)))
-    (should (equal entry "review\n- here is an error:\nTraceback\nValueError: x"))
-    (should (equal (promptu--compose (list entry)) text))))
+         (text "- review\n- here is an error:\nTraceback\nValueError: x"))
+    (should (equal (promptu--compose (list (promptu--make-entry text t)))
+                   text))))
 
 ;;; Typed session entries: blocks (strings) vs free-text regions (plists)
 
@@ -544,6 +535,12 @@ so users can extend it with (append promptu-default-blocks ...)."
     (should (equal (promptu--compose (list "review" '(:text "err:\nx" :free t)))
                    "- review\n- err:\nx"))))
 
+(ert-deftest promptu-compose-free-text-first-no-prefix ()
+  "No line prefix before leading free text; later blocks still separate."
+  (let ((promptu-separator "\n- "))
+    (should (equal (promptu--compose (list '(:text "intro" :free t) "commit"))
+                   "intro\n- commit"))))
+
 (ert-deftest promptu-edit-last-needs-buffer-p ()
   "Free-text and multi-line entries need the buffer; single-line blocks don't."
   (should-not (promptu--edit-last-needs-buffer-p "single line"))
@@ -559,12 +556,12 @@ so users can extend it with (append promptu-default-blocks ...)."
    (should (equal promptu--session '("a" (:text "B3" :free t))))))
 
 (ert-deftest promptu-set-whole-entry-marks-free-text ()
-  "M-E collapses to one free-text entry that round-trips through compose."
+  "M-E collapses to one verbatim free-text entry that round-trips."
   (promptu-test--with-session
    (let ((promptu-separator "\n- "))
      (setq promptu--session '("a" "b"))
      (promptu--set-whole-entry "- a\n- b")
-     (should (equal promptu--session '((:text "a\n- b" :free t))))
+     (should (equal promptu--session '((:text "- a\n- b" :free t))))
      (should (promptu--entry-free-p (car promptu--session)))
      (should (equal (promptu--compose promptu--session) "- a\n- b")))))
 
@@ -615,8 +612,9 @@ so users can extend it with (append promptu-default-blocks ...)."
   (let* ((promptu-separator "\n- ")
          (promptu--session (list (promptu--make-entry "blob" t)))
          (body (promptu--preview-body)))
-    ;; after the leading "- " prefix, the entry text uses the free-text face
-    (should (eq (get-text-property 2 'face body) 'promptu-free-text-face))))
+    ;; no prefix is added before free text; it starts the preview
+    (should (equal (substring-no-properties body) "blob"))
+    (should (eq (get-text-property 0 'face body) 'promptu-free-text-face))))
 
 (ert-deftest promptu-single-free-text-p ()
   (let ((promptu--session nil))
