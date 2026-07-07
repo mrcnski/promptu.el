@@ -6,6 +6,8 @@
 Compose LLM prompts from building blocks, using a convenient transient menu interface!
 
 *The opposite of 'impromptu': composed, not off-the-cuff.*
+
+<img src="screenshot.png" alt="promptu transient menu showing blocks, controls, and a live preview" width="365">
 </div>
 
 ## Usage
@@ -13,8 +15,6 @@ Compose LLM prompts from building blocks, using a convenient transient menu inte
 ```
 M-x promptu
 ```
-
-<img src="screenshot.png" alt="promptu transient menu showing blocks, controls, and a live preview" width="300">
 
 Pick building blocks one at a time. The menu stays open and shows a live preview
 as the prompt is built.
