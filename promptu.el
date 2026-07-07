@@ -218,6 +218,11 @@ placeholders, which the caller substitutes."
 ;; `(:text STRING :free t)' -- free text from a whole-prompt edit (`M-E'),
 ;; stored verbatim: compose never prepends the separator line prefix to
 ;; it, so the prefix stays kept or deleted as the user left it.
+;;
+;; Free text is deliberately not re-split on the separator into blocks:
+;; composed text is not a parseable format (no escaping), so the
+;; separator as boundary and as block content are indistinguishable, and
+;; splitting would silently revert or restructure some edits.
 
 (defun promptu--make-entry (text free)
   "Return a session entry holding TEXT.
