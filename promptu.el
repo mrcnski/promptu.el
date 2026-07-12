@@ -921,8 +921,7 @@ must come from a `transient--do-*' function."
    ("M-r" "browse" promptu--history-pick
     :inapt-if-nil promptu-history :transient t)]
   [:description promptu--preview
-                ("RET" "finish (copy)" promptu--finish :inapt-if-nil promptu--session)
-                ("q"   "abort"         transient-quit-one)]
+                ("RET" "finish (copy)" promptu--finish :inapt-if-nil promptu--session)]
   (interactive)
   (promptu--reset)
   (promptu--history-ensure-loaded)

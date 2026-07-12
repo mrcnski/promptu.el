@@ -31,7 +31,7 @@ your agent (e.g. `agent-shell`) or anywhere else.
 | `DEL`     | Remove the last entry (or the entry above the point) |
 | `M-e`     | Edit the last entry (or the entry above the point)   |
 | `RET`     | Finish: copy the composed prompt to the kill ring    |
-| `q` / `C-g` | Abort with no output                               |
+| `C-g`     | Abort with no output                                 |
 
 The full set of keys is shown in the transient menu, and should be discoverable
 and self-explanatory.
