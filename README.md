@@ -133,6 +133,26 @@ Other options:
 - `promptu-history-file` (default `nil`): where to persist history. When `nil`,
   history lives only in the current Emacs session, like the kill ring.
 
+### Loading blocks from JSON
+
+The block list can also live in a JSON file, useful for sharing it with
+other promptu frontends:
+
+```elisp
+(setq promptu-blocks
+      (promptu-blocks-from-json "~/.config/promptu/blocks.json"))
+```
+
+The file holds an array of objects mirroring the plist keys:
+
+```json
+[
+  { "key": "r", "desc": "review", "text": "review your changes" },
+  { "key": "i", "desc": "investigate", "text": "investigate {link}", "placeholders": ["link"] },
+  { "key": "P", "desc": "push", "text": "push when done", "negative": "don't push" }
+]
+```
+
 ### Persisting history across sessions
 
 History is in-memory by default. To keep it across Emacs restarts, point

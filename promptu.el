@@ -180,6 +180,23 @@ than a discrete building block.  Inherit or override to taste."
   "Face for the point marker shown in the preview while navigating."
   :group 'promptu)
 
+;;; Config helpers
+
+(defun promptu-blocks-from-json (file)
+  "Read a block list for `promptu-blocks' from FILE.
+
+FILE contains a JSON array of objects whose members mirror the
+block plist keys documented in `promptu-blocks': \"key\", \"desc\",
+\"text\", and optionally \"negative\" and \"placeholders\".  This
+allows the block list to live in a file shared with other promptu
+frontends:
+
+  (setq promptu-blocks
+        (promptu-blocks-from-json \"~/.config/promptu/blocks.json\"))"
+  (with-temp-buffer
+    (insert-file-contents file)
+    (json-parse-buffer :object-type 'plist :array-type 'list)))
+
 ;;; Pure compose core
 
 (defun promptu--strip-surrounding-newlines (text)

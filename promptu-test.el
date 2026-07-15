@@ -1023,6 +1023,45 @@ back into a different prompt's edits and switch to it."
    (should (equal promptu--session '("old")))
    (should (null promptu--history-index))))
 
+;;; promptu-blocks-from-json
+
+(ert-deftest promptu-blocks-from-json-maps-fields ()
+  "JSON objects map 1:1 onto block plists, omitting absent keys."
+  (let ((file (make-temp-file
+               "promptu-blocks" nil ".json"
+               (concat "[{\"key\": \"P\", \"desc\": \"push\","
+                       "  \"text\": \"push when done\","
+                       "  \"negative\": \"don't push\"},"
+                       " {\"key\": \"i\", \"desc\": \"investigate\","
+                       "  \"text\": \"investigate {link}\","
+                       "  \"placeholders\": [\"link\"]}]"))))
+    (unwind-protect
+        (let* ((blocks (promptu-blocks-from-json file))
+               (push-block (nth 0 blocks))
+               (inv-block (nth 1 blocks)))
+          (should (= (length blocks) 2))
+          (should (equal (plist-get push-block :key) "P"))
+          (should (equal (plist-get push-block :desc) "push"))
+          (should (equal (plist-get push-block :text) "push when done"))
+          (should (equal (plist-get push-block :negative) "don't push"))
+          (should-not (plist-member push-block :placeholders))
+          (should (equal (plist-get inv-block :placeholders) '("link")))
+          (should-not (plist-member inv-block :negative)))
+      (delete-file file))))
+
+(ert-deftest promptu-blocks-from-json-blocks-resolve ()
+  "Blocks loaded from JSON work with the compose core."
+  (let ((file (make-temp-file
+               "promptu-blocks" nil ".json"
+               (concat "[{\"key\": \"P\", \"desc\": \"push\","
+                       "  \"text\": \"push when done\","
+                       "  \"negative\": \"don't push\"}]"))))
+    (unwind-protect
+        (let ((block (car (promptu-blocks-from-json file))))
+          (should (equal (promptu--resolve block nil) "push when done"))
+          (should (equal (promptu--resolve block t) "don't push")))
+      (delete-file file))))
+
 (provide 'promptu-test)
 
 ;;; promptu-test.el ends here
