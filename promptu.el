@@ -3,6 +3,7 @@
 ;; Copyright (C) 2026 Marcin Swieczkowski
 
 ;; Author: Marcin Swieczkowski <marcin@realemail.net>
+;; Assisted-by: Claude:claude-opus-4-8
 ;; Assisted-by: Claude:claude-fable-5
 ;; Version: 1.0.0
 ;; Package-Requires: ((emacs "28.1") (transient "0.5.0"))
