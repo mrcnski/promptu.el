@@ -133,17 +133,23 @@ Other options:
 - `promptu-history-file` (default `nil`): where to persist history. When `nil`,
   history lives only in the current Emacs session, like the kill ring.
 
-### Loading blocks from JSON
+### Elisp vs. JSON configuration
 
-The block list can also live in a JSON file, useful for sharing it with
-other promptu frontends:
+Elisp is the native way to configure blocks: set `promptu-blocks` to a list
+of plists in your init file, as shown above. If nothing but Emacs reads
+your blocks, use elisp and stop here.
+
+The JSON route exists for sharing a single block list with promptu frontends
+outside Emacs (e.g. a menubar app).  In that setup the JSON file is the source
+of truth and the elisp shrinks to a loader:
 
 ```elisp
 (setq promptu-blocks
       (promptu-blocks-from-json "~/.config/promptu/blocks.json"))
 ```
 
-The file holds an array of objects mirroring the plist keys:
+The file holds an array of objects whose keys map 1:1 to the plist keys,
+minus the leading colon:
 
 ```json
 [
@@ -152,6 +158,13 @@ The file holds an array of objects mirroring the plist keys:
   { "key": "P", "desc": "push", "text": "push when done", "negative": "don't push" }
 ]
 ```
+
+Two things to keep in mind:
+
+- The file must hold the **full** block list. `promptu-default-blocks` is
+  not implicitly included, unlike the elisp `append` idiom above.
+- The file is read once, when the `setq` runs. Re-evaluate it (or restart
+  Emacs) to pick up edits.
 
 ### Persisting history across sessions
 
