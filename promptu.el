@@ -1,8 +1,9 @@
 ;;; promptu.el --- Compose LLM prompts from building blocks -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2026
+;; Copyright (C) 2026 Marcin Swieczkowski
 
-;; Author: Marcin Swieczkowski
+;; Author: Marcin Swieczkowski <marcin@realemail.net>
+;; Assisted-by: Claude:claude-fable-5
 ;; Version: 1.0.0
 ;; Package-Requires: ((emacs "28.1") (transient "0.5.0"))
 ;; Keywords: convenience, tools
@@ -45,7 +46,7 @@
 ;; Example:
 ;;
 ;; Pressing `r c - P` triggers the built-in blocks `review`, `commit`, then arms
-;; `-` and adds a negated `push`. This composes (with the default separator) a
+;; `-` and adds a negated `push`.  This composes (with the default separator) a
 ;; bulleted prompt:
 ;;
 ;;   - review your changes
@@ -247,9 +248,10 @@ lines, since the one-line minibuffer handles neither well."
 
 (defun promptu--lead-in (entry first)
   "Return the text emitted before ENTRY in the composed prompt.
-The first entry gets the separator's trailing line prefix, later ones
-the full `promptu-separator' -- except free-text entries, which carry
-their own prefix (or none), so theirs is dropped from the lead-in."
+The first entry (FIRST non-nil) gets the separator's trailing line
+prefix, later ones the full `promptu-separator' -- except free-text
+entries, which carry their own prefix (or none), so theirs is dropped
+from the lead-in."
   (let ((prefix (promptu--line-prefix promptu-separator))
         (free (promptu--entry-free-p entry)))
     (cond (first (if free "" prefix))
@@ -279,9 +281,10 @@ region -- a plist `(:text STRING :free t)' produced by `M-E'; see
   "When non-nil, the next block added is negated, then this resets to nil.")
 
 (defvar promptu--point nil
-  "Point into `promptu--session': the gap index before entry N, or nil
-for the end of the list (the default).  Blocks insert at the point;
-DEL and M-e act on the entry above it.")
+  "Point into `promptu--session', as a gap index.
+The value is the gap index before entry N, or nil for the end of the
+list (the default).  Blocks insert at the point; \\`DEL' and \\`M-e' act
+on the entry above it.")
 
 (defvar promptu-history nil
   "List of past prompts, most recent first.
@@ -291,7 +294,7 @@ Recompose one with `promptu--compose', which re-applies the current
 `promptu-separator'.")
 
 (defvar promptu--history-index nil
-  "Position in `promptu-history' while stepping with M-p / M-n.
+  "Position in `promptu-history' while stepping with \\`M-p' / \\`M-n'.
 Nil means the live session is shown (not navigating); an integer is an
 index into `promptu-history' where 0 is the most recent entry.")
 
@@ -701,8 +704,8 @@ when the edit is committed.  HEADER is passed through
 
 (defun promptu--edit-commit ()
   "Apply the buffer text via this edit's apply function and return to the menu.
-`C-c C-c' is itself the confirmation.  A blank buffer leaves the session
-unchanged."
+Invoking this command is itself the confirmation; there is no extra
+prompt.  A blank buffer leaves the session unchanged."
   (interactive)
   (let ((text (promptu--strip-surrounding-newlines (buffer-string)))
         (config promptu--edit-window-config)
@@ -730,7 +733,7 @@ unchanged."
 
 (defun promptu--finish ()
   "Copy the composed prompt to the kill ring and report.
-A no-op (no kill-ring change) when the session is empty."
+A no-op (no change to the kill ring) when the session is empty."
   (interactive)
   (if (null promptu--session)
       (message "promptu: nothing to copy")
@@ -764,7 +767,7 @@ Run once when the menu opens, not in `promptu--block-suffixes' (which
   (intern (concat "promptu--add-" key)))
 
 (defun promptu--make-add-command (block)
-  "Return an interactive command that adds BLOCK to the session."
+  "Return an interactive command adding BLOCK to the session."
   (lambda ()
     (interactive)
     (promptu--add block)))
