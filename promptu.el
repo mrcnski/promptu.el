@@ -62,6 +62,7 @@
 (require 'seq)
 (require 'cl-lib)
 (require 'eieio)
+(require 'json)
 
 ;; promptu needs transient 0.5.0+ for the `refresh-suffixes' prefix slot.
 ;; Probe for it directly (there is no reliable `transient-version' that far
@@ -182,6 +183,24 @@ than a discrete building block.  Inherit or override to taste."
 
 ;;; Config helpers
 
+(defun promptu--blocks-serializable (blocks)
+  "Copy BLOCKS with each :placeholders list as a vector, for `json-serialize'."
+  (vconcat
+   (mapcar (lambda (block)
+             (let ((copy (copy-sequence block)))
+               (when-let ((names (plist-get copy :placeholders)))
+                 (plist-put copy :placeholders (vconcat names)))
+               copy))
+           blocks)))
+
+(defun promptu--blocks-seed (file)
+  "Create FILE holding `promptu-default-blocks' as pretty-printed JSON."
+  (let ((dir (file-name-directory file)))
+    (when dir (make-directory dir t)))
+  (with-temp-file file
+    (insert (json-serialize (promptu--blocks-serializable promptu-default-blocks)))
+    (json-pretty-print-buffer)))
+
 (defun promptu-blocks-from-json (file)
   "Read a block list for `promptu-blocks' from FILE.
 
@@ -192,7 +211,13 @@ allows the block list to live in a file shared with other promptu
 frontends:
 
   (setq promptu-blocks
-        (promptu-blocks-from-json \"~/.config/promptu/blocks.json\"))"
+        (promptu-blocks-from-json \"~/.config/promptu/blocks.json\"))
+
+When FILE does not exist it is first created, seeded with
+`promptu-default-blocks', giving the shared file a working starting
+point.  An existing file is never modified."
+  (unless (file-exists-p file)
+    (promptu--blocks-seed file))
   (with-temp-buffer
     (insert-file-contents file)
     (json-parse-buffer :object-type 'plist :array-type 'list)))

@@ -1049,6 +1049,30 @@ back into a different prompt's edits and switch to it."
           (should-not (plist-member inv-block :negative)))
       (delete-file file))))
 
+(ert-deftest promptu-blocks-from-json-seeds-missing-file ()
+  "A missing file is created with the default blocks, then loaded."
+  (let* ((dir (make-temp-file "promptu-seed" t))
+         (file (expand-file-name "nested/blocks.json" dir)))
+    (unwind-protect
+        (progn
+          (should (equal (promptu-blocks-from-json file) promptu-default-blocks))
+          (should (file-exists-p file))
+          ;; The second load reads the seeded file; same result.
+          (should (equal (promptu-blocks-from-json file) promptu-default-blocks)))
+      (delete-directory dir t))))
+
+(ert-deftest promptu-blocks-from-json-malformed-file-errors-untouched ()
+  "A malformed existing file signals an error and is not overwritten."
+  (let ((file (make-temp-file "promptu-blocks" nil ".json" "not json")))
+    (unwind-protect
+        (progn
+          (should-error (promptu-blocks-from-json file))
+          (should (equal (with-temp-buffer
+                           (insert-file-contents file)
+                           (buffer-string))
+                         "not json")))
+      (delete-file file))))
+
 (ert-deftest promptu-blocks-from-json-blocks-resolve ()
   "Blocks loaded from JSON work with the compose core."
   (let ((file (make-temp-file

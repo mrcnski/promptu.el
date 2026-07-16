@@ -162,7 +162,9 @@ minus the leading colon:
 Two things to keep in mind:
 
 - The file must hold the **full** block list. `promptu-default-blocks` is
-  not implicitly included, unlike the elisp `append` idiom above.
+  not implicitly included, unlike the elisp `append` idiom above. To start
+  from the default set, load a path that doesn't exist yet: the file is
+  then created and seeded with `promptu-default-blocks`.
 - The file is read once, when the `setq` runs. Re-evaluate it (or restart
   Emacs) to pick up edits.
 
