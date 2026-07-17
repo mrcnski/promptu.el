@@ -8,7 +8,7 @@
 ;; Version: 1.0.0
 ;; Package-Requires: ((emacs "28.1") (transient "0.5.0"))
 ;; Keywords: convenience, tools
-;; URL: https://github.com/mrcnski/promptu
+;; URL: https://github.com/mrcnski/promptu.el
 
 ;; This file is not part of GNU Emacs.
 

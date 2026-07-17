@@ -39,4 +39,4 @@ Initial release.
   (`promptu-history-max`).
 - Runtime check for the minimum required transient version.
 
-[1.0.0]: https://github.com/mrcnski/promptu/releases/tag/v1.0.0
+[1.0.0]: https://github.com/mrcnski/promptu.el/releases/tag/v1.0.0
