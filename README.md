@@ -5,6 +5,8 @@
 
 Compose LLM prompts from building blocks, using a convenient transient menu interface!
 
+For the menubar Mac app, see [here](https://github.com/mrcnski/promptu)!
+
 *The opposite of 'impromptu': composed, not off-the-cuff.*
 
 <img src="screenshot.png" alt="promptu transient menu showing blocks, controls, and a live preview" width="365">
@@ -195,6 +197,7 @@ package-install RET transient RET`).
 
 - [context-clues](https://github.com/mrcnski/context-clues): a sibling
   transient menu for copying file, buffer, and code context to the kill ring.
+- [promptu](https://github.com/mrcnski/promptu): the menubar Mac app!
 
 ## License
 
