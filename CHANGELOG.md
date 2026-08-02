@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-02
+
 ### Added
 
 - `promptu-blocks-from-json`: read the block list from a JSON file, so it
@@ -39,4 +41,5 @@ Initial release.
   (`promptu-history-max`).
 - Runtime check for the minimum required transient version.
 
+[1.1.0]: https://github.com/mrcnski/promptu.el/releases/tag/v1.1.0
 [1.0.0]: https://github.com/mrcnski/promptu.el/releases/tag/v1.0.0
