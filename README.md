@@ -3,6 +3,11 @@
 
 # promptu
 
+<a href="https://melpa.org/#/promptu"><img alt="MELPA" src="https://melpa.org/packages/promptu-badge.svg"/></a>
+<a href="https://stable.melpa.org/#/promptu"><img alt="MELPA Stable" src="https://stable.melpa.org/packages/promptu-badge.svg"/></a>
+<a href="LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-blue.svg"/></a>
+<img alt="Emacs 28.1+" src="https://img.shields.io/badge/Emacs-28.1%2B-7F5AB6?logo=gnuemacs&logoColor=white"/>
+
 Compose LLM prompts from building blocks, using a convenient transient menu interface!
 
 For the menubar Mac app, see [here](https://github.com/mrcnski/promptu)!
@@ -86,11 +91,45 @@ bulleted list:
 
 ## Installation
 
-Clone and load:
+### MELPA
+
+promptu is available on [MELPA](https://melpa.org/#/promptu):
+
+```
+M-x package-install RET promptu RET
+```
+
+Or with use-package:
 
 ```elisp
 (use-package promptu
-  :load-path "~/.emacs.d/packages/promptu"
+  :ensure t
+  :bind ("s-;" . promptu))
+```
+
+This route also pulls in a new enough `transient`, which saves the manual step
+described under [Dependencies](#dependencies) below.
+
+### Manual Installation
+
+1. Clone or download this repository:
+
+```bash
+git clone https://github.com/mrcnski/promptu.el.git ~/.emacs.d/packages/promptu.el
+```
+
+2. Add to your Emacs configuration:
+
+```elisp
+(add-to-list 'load-path "~/.emacs.d/packages/promptu.el")
+(require 'promptu)
+```
+
+Or with use-package:
+
+```elisp
+(use-package promptu
+  :load-path "~/.emacs.d/packages/promptu.el"
   :bind ("s-;" . promptu))
 ```
 
