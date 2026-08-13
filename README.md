@@ -232,11 +232,13 @@ Emacs 28.1+ and `transient` 0.5.0+. Nothing else.
 0.5.0. On those, install a newer `transient` from GNU ELPA (`M-x
 package-install RET transient RET`).
 
-## Related
+## Related projects
 
-- [context-clues](https://github.com/mrcnski/context-clues): a sibling
-  transient menu for copying file, buffer, and code context to the kill ring.
 - [promptu](https://github.com/mrcnski/promptu): the menubar Mac app!
+- [context-clues](https://github.com/mrcnski/context-clues): a sibling transient
+  menu for copying file, buffer, and code context to paste into LLMs.
+- [surveyor](https://github.com/mrcnski/surveyor.el): diagram your code using
+  your favorite LLM and an intuitive interface.
 
 ## License
 
