@@ -1,7 +1,7 @@
 <div align="center">
   <img src="mascot.svg" alt="promptu mascot — a friendly creature built from stacked prompt blocks" width="180"/>
 
-# promptu
+# promptu.el
 
 <a href="https://melpa.org/#/promptu"><img alt="MELPA" src="https://melpa.org/packages/promptu-badge.svg"/></a>
 <a href="https://stable.melpa.org/#/promptu"><img alt="MELPA Stable" src="https://stable.melpa.org/packages/promptu-badge.svg"/></a>
@@ -226,7 +226,7 @@ enabling this writes those values to the file in plain text.
 
 ## Dependencies
 
-Emacs 28.1+ and `transient` 0.5.0+. Nothing else.
+Emacs 28.1+ and `transient` 0.5.0+.
 
 `transient` ships with Emacs, but Emacs 28/29 bundle a version older than
 0.5.0. On those, install a newer `transient` from GNU ELPA (`M-x
