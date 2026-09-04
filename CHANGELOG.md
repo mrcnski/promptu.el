@@ -7,13 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- In-progress prompts are no longer discarded between invocations.  The session
+  is still cleared when the prompt is finished.
+
 ## [1.1.0] - 2026-08-02
 
 ### Added
 
-- `promptu-blocks-from-json`: read the block list from a JSON file, so it
-  can be shared with other promptu frontends.  A missing file is created
-  and seeded with the default blocks; an existing file is never modified.
+- `promptu-blocks-from-json`: read the block list from a JSON file, so it can be
+  shared with other promptu frontends.  A missing file is created and seeded
+  with the default blocks; an existing file is never modified.
 
 ## [1.0.0] - 2026-07-12
 

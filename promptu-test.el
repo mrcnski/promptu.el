@@ -232,6 +232,20 @@
     (promptu--finish)
     (should (equal (car kill-ring) "previous"))))
 
+(ert-deftest promptu-finish-resets-session ()
+  "Finish clears the session; quitting without finishing keeps it."
+  (promptu-test--with-session
+   (let ((kill-ring nil)
+         (kill-ring-yank-pointer nil)
+         (promptu-history nil))
+     (promptu--add '(:text "a"))
+     (setq promptu--point 0
+           promptu--undo-stack (list (promptu--snapshot)))
+     (promptu--finish)
+     (should (null promptu--session))
+     (should (null promptu--point))
+     (should (null promptu--undo-stack)))))
+
 (ert-deftest promptu-abort-leaves-kill-ring-untouched ()
   "Aborting (reset without finish) must not touch the kill ring."
   (let ((kill-ring '("previous"))

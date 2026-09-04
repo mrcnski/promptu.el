@@ -967,7 +967,9 @@ must come from a `transient--do-*' function."
   [:description promptu--preview
                 ("RET" "finish (copy)" promptu--finish :inapt-if-nil promptu--session)]
   (interactive)
-  (promptu--reset)
+  ;; A quit keeps the draft for the next invocation. Only the negate flag resets
+  ;; on open.
+  (setq promptu--negate-next nil)
   (promptu--history-ensure-loaded)
   (promptu--warn-key-collisions)
   (transient-setup 'promptu))
