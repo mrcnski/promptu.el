@@ -781,6 +781,7 @@ A no-op (no change to the kill ring) when the session is empty."
     (let ((text (promptu--compose promptu--session)))
       (promptu--history-add promptu--session)
       (kill-new text)
+      (promptu--reset)
       (message "promptu: copied prompt to kill ring"))))
 
 ;;; Transient menu
