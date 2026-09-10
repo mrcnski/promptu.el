@@ -282,13 +282,49 @@
                    '(:desc "link" :placeholders ("from" "to"))))
                  "link <from> <to>")))
 
+(ert-deftest promptu-block-description-truncates-long-label ()
+  "Guards against one wordy label widening its whole column in the menu."
+  (let ((promptu-block-label-width 10))
+    (let ((desc (promptu--block-description
+                 '(:desc "review changes carefully"))))
+      (should (<= (string-width desc) 10))
+      (should (string-prefix-p "review" (substring-no-properties desc))))))
+
+(ert-deftest promptu-block-description-short-label-untouched ()
+  "A label already within the width limit is returned unchanged."
+  (let ((promptu-block-label-width 24))
+    (should (equal (promptu--block-description '(:desc "commit")) "commit"))))
+
+(ert-deftest promptu-block-description-nil-width-never-truncates ()
+  "A nil `promptu-block-label-width' disables truncation entirely."
+  (let ((promptu-block-label-width nil)
+        (desc (make-string 40 ?x)))
+    (should (equal (promptu--block-description (list :desc desc)) desc))))
+
+;;; Block columns
+
+(ert-deftest promptu-split-columns-row-major ()
+  "The block grid fills row by row, so items alternate left/right by index."
+  (should (equal (promptu--split-columns '(a b c d e)) '((a c e) (b d))))
+  (should (equal (promptu--split-columns nil) '(nil nil)))
+  (should (equal (promptu--split-columns '(a)) '((a) nil))))
+
 (ert-deftest promptu-block-suffixes-unique-commands-per-key ()
   "Blocks sharing a :desc must not collide; each key gets its own command."
   (let ((promptu-blocks '((:key "a" :desc "dup" :text "FIRST")
                           (:key "b" :desc "dup" :text "SECOND")))
         (promptu--session nil)
         (promptu--negate-next nil))
-    (promptu--block-suffixes nil) ; defines the per-key commands
+    ;; The result is two `transient-column' groups (see
+    ;; `promptu--split-columns'); flatten both to inspect the suffix specs.
+    (let* ((groups (promptu--block-suffixes nil)) ; defines the per-key commands
+           (specs (mapcan (lambda (group)
+                             (mapcar (lambda (child) (nth 2 child))
+                                     (aref group 3)))
+                           groups)))
+      (should (equal (sort (mapcar (lambda (spec) (plist-get spec :key)) specs)
+                           #'string<)
+                     '("a" "b"))))
     (should (fboundp (promptu--add-command-symbol "a")))
     (should (fboundp (promptu--add-command-symbol "b")))
     (funcall (promptu--add-command-symbol "a"))

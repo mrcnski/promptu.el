@@ -156,6 +156,15 @@ enabling persistence writes those values to this file in plain text."
   :type '(choice (const :tag "In-memory only" nil) file)
   :group 'promptu)
 
+(defcustom promptu-block-label-width 24
+  "Maximum width of a block's label in the menu, in columns.
+
+The menu lays blocks out in two columns, so one wordy label would push
+its whole column wider.  Labels past this width are truncated with an
+ellipsis.  nil never truncates."
+  :type '(choice (const :tag "Never truncate" nil) integer)
+  :group 'promptu)
+
 (defface promptu-preview-face
   '((t :inherit font-lock-doc-face))
   "Face for the composed-prompt preview shown at the bottom of the menu."
@@ -824,32 +833,48 @@ empty, the hints stand alone with no leading space."
                      (mapconcat (lambda (name)
                                   (propertize (format "<%s>" name)
                                               'face 'promptu-placeholder-face))
-                                placeholders " "))))
-    (cond ((not hints) desc)
-          ((string-empty-p desc) hints)
-          (t (concat desc " " hints)))))
+                                placeholders " ")))
+         (label (cond ((not hints) desc)
+                      ((string-empty-p desc) hints)
+                      (t (concat desc " " hints)))))
+    (if (integerp promptu-block-label-width)
+        (truncate-string-to-width label promptu-block-label-width nil nil t)
+      label)))
+
+(defun promptu--split-columns (items)
+  "Split ITEMS into two lists by alternating: (LEFT RIGHT).
+This is a two-column grid filled row by row, the same order the Mac
+app's block grid uses."
+  (let (left right (i 0))
+    (dolist (item items)
+      (if (zerop (% i 2)) (push item left) (push item right))
+      (setq i (1+ i)))
+    (list (nreverse left) (nreverse right))))
 
 (defun promptu--block-suffixes (_)
   "Build transient suffixes from `promptu-blocks'.
-One stay-open suffix per block; blocks whose key collides with a reserved
-key are skipped silently here (the collision is reported once by
-`promptu--warn-key-collisions' when the menu opens).  Each suffix gets an
-explicit command symbol keyed on its :key, so blocks sharing a :desc do not
-collide on a description-derived command symbol."
-  (transient-parse-suffixes
-   'promptu
-   (let (specs)
-     (dolist (block promptu-blocks)
-       (let ((key (plist-get block :key)))
-         (unless (promptu--reserved-key-p key)
-           (let ((command (promptu--add-command-symbol key)))
-             (fset command (promptu--make-add-command block))
-             (push (list key
-                         (promptu--block-description block)
-                         command
-                         :transient t)
-                   specs)))))
-     (nreverse specs))))
+One stay-open suffix per block; blocks whose key collides with a
+reserved key are skipped silently here (the collision is reported once
+by `promptu--warn-key-collisions' when the menu opens).  Each suffix
+gets an explicit command symbol keyed on its :key, so blocks sharing a
+:desc do not collide on a description-derived command symbol."
+  (let (specs)
+    (dolist (block promptu-blocks)
+      (let ((key (plist-get block :key)))
+        (unless (promptu--reserved-key-p key)
+          (let ((command (promptu--add-command-symbol key)))
+            (fset command (promptu--make-add-command block))
+            (push (list key
+                        (promptu--block-description block)
+                        command
+                        :transient t)
+                  specs)))))
+    (setq specs (nreverse specs))
+    (pcase-let ((`(,left ,right) (promptu--split-columns specs)))
+      (transient-parse-suffixes
+       'promptu
+       (delq nil (list (and left (vconcat left))
+                       (and right (vconcat right))))))))
 
 (defun promptu--preview-body ()
   "Render the composed prompt, facing free-text regions distinctly.
@@ -939,32 +964,34 @@ must come from a `transient--do-*' function."
   ;; would do nothing (e.g. undo with an empty stack) gray out live.
   :refresh-suffixes t
   ["Blocks"
-   :class transient-column
+   :class transient-columns
    :setup-children promptu--block-suffixes]
-  ["Edit"
-   ("-"   "negate next" promptu--toggle-negate :transient t)
-   ("DEL" promptu--remove-entry
-    :description promptu--remove-description
-    :inapt-if-not promptu--target-entry :transient t)
-   ("M-e" promptu--edit-entry
-    :description promptu--edit-description
-    :inapt-if-not promptu--target-entry
-    :transient promptu--do-edit-entry)
-   ("M-E" "edit all" promptu--edit-prompt :inapt-if-nil promptu--session)
-   ("C-/"   "undo" promptu--undo :inapt-if-nil promptu--undo-stack :transient t)
-   ("C-M-/" "redo" promptu--redo :inapt-if-nil promptu--redo-stack :transient t)]
-  ["Point"
-   ("C-p" "up"   promptu--point-up
-    :inapt-if promptu--point-up-inapt-p :transient t)
-   ("C-n" "down" promptu--point-down
-    :inapt-if-nil promptu--point :transient t)]
-  ["History"
-   ("M-p" "older"  promptu--history-prev
-    :inapt-if promptu--history-prev-inapt-p :transient t)
-   ("M-n" "newer"  promptu--history-next
-    :inapt-if-nil promptu--history-index :transient t)
-   ("M-r" "browse" promptu--history-pick
-    :inapt-if-nil promptu-history :transient t)]
+  ;; A vector of vectors defaults to transient-columns, so Edit/Point/History
+  ;; render side by side instead of stacked.
+  [["Edit"
+    ("-"   "negate next" promptu--toggle-negate :transient t)
+    ("DEL" promptu--remove-entry
+     :description promptu--remove-description
+     :inapt-if-not promptu--target-entry :transient t)
+    ("M-e" promptu--edit-entry
+     :description promptu--edit-description
+     :inapt-if-not promptu--target-entry
+     :transient promptu--do-edit-entry)
+    ("M-E" "edit all" promptu--edit-prompt :inapt-if-nil promptu--session)
+    ("C-/"   "undo" promptu--undo :inapt-if-nil promptu--undo-stack :transient t)
+    ("C-M-/" "redo" promptu--redo :inapt-if-nil promptu--redo-stack :transient t)]
+   ["Point"
+    ("C-p" "up"   promptu--point-up
+     :inapt-if promptu--point-up-inapt-p :transient t)
+    ("C-n" "down" promptu--point-down
+     :inapt-if-nil promptu--point :transient t)]
+   ["History"
+    ("M-p" "older"  promptu--history-prev
+     :inapt-if promptu--history-prev-inapt-p :transient t)
+    ("M-n" "newer"  promptu--history-next
+     :inapt-if-nil promptu--history-index :transient t)
+    ("M-r" "browse" promptu--history-pick
+     :inapt-if-nil promptu-history :transient t)]]
   [:description promptu--preview
                 ("RET" "finish (copy)" promptu--finish :inapt-if-nil promptu--session)]
   (interactive)

@@ -7,10 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `promptu-block-label-width`: labels longer than it are truncated with an
+  ellipsis, so one wordy block cannot widen its column.
+
 ### Changed
 
 - In-progress prompts are no longer discarded between invocations.  The session
   is still cleared when the prompt is finished.
+- The block list is laid out in two columns, filled row by row, matching the
+  Mac app's grid.
 
 ## [1.1.0] - 2026-08-02
 
