@@ -5,6 +5,7 @@
 ;; Author: Marcin Swieczkowski <marcin@realemail.net>
 ;; Assisted-by: Claude:claude-opus-4-8
 ;; Assisted-by: Claude:claude-fable-5
+;; Assisted-by: Claude:claude-fable-5-1
 ;; Version: 1.1.0
 ;; Package-Requires: ((emacs "28.1") (transient "0.5.0"))
 ;; Keywords: convenience, tools
@@ -96,6 +97,12 @@ A constant so it can be extended without retyping it, e.g.
 (defcustom promptu-blocks promptu-default-blocks
   "Building blocks available in the `promptu' menu.
 
+Either a list of blocks, or the name of a JSON file holding one.  The
+file form is for sharing the list with other promptu frontends. It is
+read every time the menu opens, so edits take effect on the next open..
+See `promptu-blocks-from-json' for the file's format and the seeding of
+a missing file.
+
 Each block is a plist with these keys:
 
   :key          string, the transient trigger key.  Must avoid the keys
@@ -112,12 +119,14 @@ Each block is a plist with these keys:
                 appears as {name} in the emitted text (whether that is
                 :text or :negative), and the value is substituted in
                 before the block joins the prompt."
-  :type '(repeat
-          (plist :options ((:key string)
-                           (:desc string)
-                           (:text string)
-                           (:negative string)
-                           (:placeholders (repeat string)))))
+  :type '(choice
+          (repeat :tag "Block list"
+                  (plist :options ((:key string)
+                                   (:desc string)
+                                   (:text string)
+                                   (:negative string)
+                                   (:placeholders (repeat string)))))
+          (file :tag "JSON file"))
   :group 'promptu)
 
 (defcustom promptu-separator "\n- "
@@ -211,14 +220,15 @@ than a discrete building block.  Inherit or override to taste."
 (defun promptu-blocks-from-json (file)
   "Read a block list for `promptu-blocks' from FILE.
 
-FILE contains a JSON array of objects whose members mirror the
-block plist keys documented in `promptu-blocks': \"key\", \"desc\",
-\"text\", and optionally \"negative\" and \"placeholders\".  This
-allows the block list to live in a file shared with other promptu
-frontends:
+FILE contains a JSON array of objects whose members mirror the block
+plist keys documented in `promptu-blocks'..  This allows the block list
+to live in a file shared with other promptu frontends.  Setting
+`promptu-blocks' to the file name does that directly; call this to
+combine a file with other blocks instead:
 
   (setq promptu-blocks
-        (promptu-blocks-from-json \"~/.config/promptu/blocks.json\"))
+        (append promptu-default-blocks
+                (promptu-blocks-from-json \"~/.config/promptu/extra.json\")))
 
 When FILE does not exist it is first created, seeded with
 `promptu-default-blocks', giving the shared file a working starting
@@ -228,6 +238,27 @@ point.  An existing file is never modified."
   (with-temp-buffer
     (insert-file-contents file)
     (json-parse-buffer :object-type 'plist :array-type 'list)))
+
+(defvar promptu--blocks nil
+  "The blocks the menu shows (`promptu-blocks' resolved at open).
+When `promptu-blocks' names a file, this holds what was last read from
+it, so a file that fails to load leaves the previous blocks in place.")
+
+(defun promptu--load-blocks ()
+  "Resolve `promptu-blocks' into `promptu--blocks'.
+A file is re-read on every call, so the menu opens with its latest
+contents.  One that fails to load is reported with a warning and the
+current `promptu--blocks' kept, so the menu still opens and \\`M-b' can
+reach the file to fix it."
+  (setq promptu--blocks
+        (if (stringp promptu-blocks)
+            (condition-case err
+                (promptu-blocks-from-json promptu-blocks)
+              (error
+               (lwarn 'promptu :warning "could not load %s: %s"
+                      promptu-blocks (error-message-string err))
+               promptu--blocks))
+          promptu-blocks)))
 
 ;;; Pure compose core
 
@@ -796,7 +827,8 @@ A no-op (no change to the kill ring) when the session is empty."
 ;;; Transient menu
 
 (defconst promptu--reserved-keys
-  '("-" "RET" "DEL" "M-e" "M-E" "M-p" "M-n" "M-r" "C-p" "C-n" "C-/" "C-M-/" "q")
+  '("-" "RET" "DEL" "M-e" "M-E" "M-b" "M-p" "M-n" "M-r" "C-p" "C-n" "C-/" "C-M-/"
+    "q")
   "Keys reserved for menu control; block keys must avoid these.")
 
 (defun promptu--reserved-key-p (key)
@@ -804,10 +836,9 @@ A no-op (no change to the kill ring) when the session is empty."
   (and (member key promptu--reserved-keys) t))
 
 (defun promptu--warn-key-collisions ()
-  "Warn about `promptu-blocks' entries whose :key is reserved (and skipped).
-Run once when the menu opens, not in `promptu--block-suffixes' (which
-`:refresh-suffixes' re-runs every command), to avoid per-keystroke spam."
-  (dolist (block promptu-blocks)
+  "Warn about `promptu--blocks' entries whose :key is reserved (and skipped).
+Run once when the menu opens."
+  (dolist (block promptu--blocks)
     (let ((key (plist-get block :key)))
       (when (promptu--reserved-key-p key)
         (lwarn 'promptu :warning
@@ -852,14 +883,14 @@ app's block grid uses."
     (list (nreverse left) (nreverse right))))
 
 (defun promptu--block-suffixes (_)
-  "Build transient suffixes from `promptu-blocks'.
-One stay-open suffix per block; blocks whose key collides with a
-reserved key are skipped silently here (the collision is reported once
-by `promptu--warn-key-collisions' when the menu opens).  Each suffix
-gets an explicit command symbol keyed on its :key, so blocks sharing a
-:desc do not collide on a description-derived command symbol."
+  "Build the children of the Blocks group from `promptu--blocks'.
+A two-column grid with one stay-open suffix per block, then a row with
+\\`M-b' when `promptu-blocks' names a file.  Blocks whose key collides
+with a reserved key are skipped silently here (the collision is reported
+once when the menu opens).  Each suffix gets an explicit command symbol
+keyed on its :key."
   (let (specs)
-    (dolist (block promptu-blocks)
+    (dolist (block promptu--blocks)
       (let ((key (plist-get block :key)))
         (unless (promptu--reserved-key-p key)
           (let ((command (promptu--add-command-symbol key)))
@@ -870,11 +901,17 @@ gets an explicit command symbol keyed on its :key, so blocks sharing a
                         :transient t)
                   specs)))))
     (setq specs (nreverse specs))
-    (pcase-let ((`(,left ,right) (promptu--split-columns specs)))
+    (pcase-let* ((`(,left ,right) (promptu--split-columns specs))
+                 (columns (delq nil (list (and left (vconcat left))
+                                          (and right (vconcat right))))))
       (transient-parse-suffixes
        'promptu
-       (delq nil (list (and left (vconcat left))
-                       (and right (vconcat right))))))))
+       (delq nil
+             (list (and columns
+                        (apply #'vector :class 'transient-columns columns))
+                   (and (promptu--blocks-file-p)
+                        (vector '("M-b" "edit blocks"
+                                  promptu--find-blocks-file)))))))))
 
 (defun promptu--preview-body ()
   "Render the composed prompt, facing free-text regions distinctly.
@@ -957,6 +994,16 @@ must come from a `transient--do-*' function."
         (transient--do-exit)
       (transient--do-call))))
 
+(defun promptu--blocks-file-p ()
+  "Non-nil when `promptu-blocks' names a file, which \\`M-b' can visit."
+  (stringp promptu-blocks))
+
+(defun promptu--find-blocks-file ()
+  "Visit the file `promptu-blocks' names, to edit the blocks.
+Edits take effect the next time the menu opens."
+  (interactive)
+  (find-file promptu-blocks))
+
 ;;;###autoload
 (transient-define-prefix promptu ()
   "Compose an LLM prompt from building blocks."
@@ -964,7 +1011,7 @@ must come from a `transient--do-*' function."
   ;; would do nothing (e.g. undo with an empty stack) gray out live.
   :refresh-suffixes t
   ["Blocks"
-   :class transient-columns
+   :class transient-subgroups
    :setup-children promptu--block-suffixes]
   ;; A vector of vectors defaults to transient-columns, so Edit/Point/History
   ;; render side by side instead of stacked.
@@ -999,6 +1046,7 @@ must come from a `transient--do-*' function."
   ;; on open.
   (setq promptu--negate-next nil)
   (promptu--history-ensure-loaded)
+  (promptu--load-blocks)
   (promptu--warn-key-collisions)
   (transient-setup 'promptu))
 

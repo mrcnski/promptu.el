@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `promptu-block-label-width`: labels longer than it are truncated with an
   ellipsis, so one wordy block cannot widen its column.
+- `promptu-blocks` may name a JSON file instead of holding a list.  The file is
+  read each time the menu opens, so edits take effect on the next open.
+- `M-b` visits the blocks file from the menu.  Shown only when `promptu-blocks`
+  names a file.
 
 ### Changed
 

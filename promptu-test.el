@@ -311,17 +311,18 @@
 
 (ert-deftest promptu-block-suffixes-unique-commands-per-key ()
   "Blocks sharing a :desc must not collide; each key gets its own command."
-  (let ((promptu-blocks '((:key "a" :desc "dup" :text "FIRST")
-                          (:key "b" :desc "dup" :text "SECOND")))
+  (let ((promptu--blocks '((:key "a" :desc "dup" :text "FIRST")
+                           (:key "b" :desc "dup" :text "SECOND")))
         (promptu--session nil)
         (promptu--negate-next nil))
-    ;; The result is two `transient-column' groups (see
-    ;; `promptu--split-columns'); flatten both to inspect the suffix specs.
+    ;; The first child is the grid: a columns group holding two column
+    ;; groups (see `promptu--split-columns'); flatten both to inspect the
+    ;; suffix specs.
     (let* ((groups (promptu--block-suffixes nil)) ; defines the per-key commands
-           (specs (mapcan (lambda (group)
+           (specs (mapcan (lambda (column)
                              (mapcar (lambda (child) (nth 2 child))
-                                     (aref group 3)))
-                           groups)))
+                                     (aref column 3)))
+                           (aref (car groups) 3))))
       (should (equal (sort (mapcar (lambda (spec) (plist-get spec :key)) specs)
                            #'string<)
                      '("a" "b"))))
@@ -335,8 +336,8 @@
   "Building suffixes must not warn: `:refresh-suffixes' re-runs it per keystroke.
 The reserved-key collision is reported by `promptu--warn-key-collisions'
 instead, so no `lwarn' fires from the refresh path."
-  (let ((promptu-blocks '((:key "DEL" :desc "bad" :text "X")
-                          (:key "a"   :desc "ok"  :text "Y")))
+  (let ((promptu--blocks '((:key "DEL" :desc "bad" :text "X")
+                           (:key "a"   :desc "ok"  :text "Y")))
         (warned nil))
     (cl-letf (((symbol-function 'lwarn)
                (lambda (&rest _) (setq warned t))))
@@ -346,10 +347,21 @@ instead, so no `lwarn' fires from the refresh path."
     (should-not (fboundp (promptu--add-command-symbol "DEL")))
     (should (fboundp (promptu--add-command-symbol "a")))))
 
+(ert-deftest promptu-block-suffixes-footer-row-only-for-file ()
+  "The `M-b' row follows the grid only when `promptu-blocks' names a file."
+  (let ((promptu--blocks '((:key "a" :desc "a" :text "A"))))
+    (let* ((promptu-blocks "blocks.json")
+           (groups (promptu--block-suffixes nil)))
+      (should (= (length groups) 2))
+      (should (equal (plist-get (nth 2 (car (aref (cadr groups) 3))) :key)
+                     "M-b")))
+    (let ((promptu-blocks promptu--blocks))
+      (should (= (length (promptu--block-suffixes nil)) 1)))))
+
 (ert-deftest promptu-warn-key-collisions-warns-once-per-reserved-key ()
   "`promptu--warn-key-collisions' warns for each colliding block, valid ones aside."
-  (let ((promptu-blocks '((:key "DEL" :desc "bad" :text "X")
-                          (:key "a"   :desc "ok"  :text "Y")))
+  (let ((promptu--blocks '((:key "DEL" :desc "bad" :text "X")
+                           (:key "a"   :desc "ok"  :text "Y")))
         (warnings nil))
     (cl-letf (((symbol-function 'lwarn)
                (lambda (&rest args) (push args warnings))))
@@ -368,6 +380,7 @@ so users can extend it with (append promptu-default-blocks ...)."
   (should (promptu--reserved-key-p "DEL"))
   (should (promptu--reserved-key-p "M-e"))
   (should (promptu--reserved-key-p "M-E"))
+  (should (promptu--reserved-key-p "M-b"))
   (should (promptu--reserved-key-p "M-p"))
   (should (promptu--reserved-key-p "M-n"))
   (should (promptu--reserved-key-p "M-r"))
@@ -1134,6 +1147,53 @@ back into a different prompt's edits and switch to it."
         (let ((block (car (promptu-blocks-from-json file))))
           (should (equal (promptu--resolve block nil) "push when done"))
           (should (equal (promptu--resolve block t) "don't push")))
+      (delete-file file))))
+
+;;; promptu--load-blocks
+
+(defun promptu-test--block-keys ()
+  "The :key of each block in `promptu--blocks', in order."
+  (mapcar (lambda (block) (plist-get block :key)) promptu--blocks))
+
+(ert-deftest promptu-load-blocks-list-used-as-is ()
+  "A list value of `promptu-blocks' is the block list itself."
+  (let ((promptu-blocks '((:key "a" :desc "a" :text "A")))
+        (promptu--blocks nil))
+    (should-not (promptu--blocks-file-p))
+    (promptu--load-blocks)
+    (should (eq promptu--blocks promptu-blocks))))
+
+(ert-deftest promptu-load-blocks-rereads-file-each-time ()
+  "A file value is read on every load, so edits show on the next open."
+  (let ((file (make-temp-file
+               "promptu-blocks" nil ".json"
+               "[{\"key\": \"a\", \"desc\": \"a\", \"text\": \"A\"}]")))
+    (unwind-protect
+        (let ((promptu-blocks file)
+              (promptu--blocks nil))
+          (should (promptu--blocks-file-p))
+          (promptu--load-blocks)
+          (should (equal (promptu-test--block-keys) '("a")))
+          (with-temp-file file
+            (insert "[{\"key\": \"a\", \"desc\": \"a\", \"text\": \"A\"},"
+                    " {\"key\": \"b\", \"desc\": \"b\", \"text\": \"B\"}]"))
+          (promptu--load-blocks)
+          (should (equal (promptu-test--block-keys) '("a" "b"))))
+      (delete-file file))))
+
+(ert-deftest promptu-load-blocks-malformed-file-warns-and-keeps-previous ()
+  "A file that fails to parse is reported; the last good blocks stay in use."
+  (let ((file (make-temp-file "promptu-blocks" nil ".json" "not json"))
+        (previous '((:key "a" :desc "a" :text "A")))
+        (warnings nil))
+    (unwind-protect
+        (let ((promptu-blocks file)
+              (promptu--blocks previous))
+          (cl-letf (((symbol-function 'lwarn)
+                     (lambda (&rest args) (push args warnings))))
+            (promptu--load-blocks))
+          (should (= (length warnings) 1))
+          (should (eq promptu--blocks previous)))
       (delete-file file))))
 
 (provide 'promptu-test)

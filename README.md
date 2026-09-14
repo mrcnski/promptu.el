@@ -182,11 +182,10 @@ your blocks, use elisp and stop here.
 
 The JSON route exists for sharing a single block list with promptu frontends
 outside Emacs (e.g. a menubar app).  In that setup the JSON file is the source
-of truth and the elisp shrinks to a loader:
+of truth:
 
 ```elisp
-(setq promptu-blocks
-      (promptu-blocks-from-json "~/.config/promptu/blocks.json"))
+(setq promptu-blocks "~/.config/promptu/blocks.json")
 ```
 
 The file holds an array of objects whose keys map 1:1 to the plist keys,
@@ -200,14 +199,14 @@ minus the leading colon:
 ]
 ```
 
-Two things to keep in mind:
+Things to keep in mind:
 
 - The file must hold the **full** block list. `promptu-default-blocks` is
   not implicitly included, unlike the elisp `append` idiom above. To start
-  from the default set, load a path that doesn't exist yet: the file is
+  from the default set, name a path that doesn't exist yet: the file is
   then created and seeded with `promptu-default-blocks`.
-- The file is read once, when the `setq` runs. Re-evaluate it (or restart
-  Emacs) to pick up edits.
+- The file is read each time the menu opens, so edits take effect on the
+  next open. `M-b` in the menu visits the file.
 
 ### Persisting history across sessions
 
