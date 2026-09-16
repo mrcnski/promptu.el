@@ -17,16 +17,16 @@
 (require 'cl-lib)
 (require 'promptu)
 
-;;; promptu--resolve (R5, AE1)
+;;; promptu--resolve
 
 (ert-deftest promptu-resolve-negated-without-explicit-negative ()
-  "Covers AE1: negated block with no :negative gets the default prefix."
+  "Negated block with no :negative gets the default prefix."
   (let ((promptu-negation-prefix "don't "))
     (should (equal (promptu--resolve '(:key "p" :text "push when done") t)
                    "don't push when done"))))
 
 (ert-deftest promptu-resolve-negated-with-explicit-negative ()
-  "Covers AE1: negated block with :negative returns that template."
+  "Negated block with :negative returns that template."
   (should (equal (promptu--resolve '(:key "t" :text "add tests"
                                      :negative "skip the tests")
                                    t)
@@ -41,10 +41,10 @@
     (should (equal (promptu--resolve '(:text "push") t)
                    "do not push"))))
 
-;;; promptu--substitute (R4, AE2)
+;;; promptu--substitute
 
 (ert-deftest promptu-substitute-single-placeholder ()
-  "Covers AE2."
+  "A single {name} placeholder is replaced by its value."
   (should (equal (promptu--substitute "investigate {link}"
                                       '(("link" . "https://example.com/issue/42")))
                  "investigate https://example.com/issue/42")))
@@ -61,10 +61,10 @@
   (should (equal (promptu--substitute "investigate {link}" nil)
                  "investigate {link}")))
 
-;;; promptu--compose (R10, KTD5, AE3)
+;;; promptu--compose
 
 (ert-deftest promptu-compose-default-separator-bulleted ()
-  "Covers AE3: three blocks join as a fully bulleted list."
+  "Three blocks join as a fully bulleted list."
   (let ((promptu-separator "\n- "))
     (should (equal (promptu--compose '("review your changes" "commit" "don't push"))
                    "- review your changes\n- commit\n- don't push"))))
@@ -85,7 +85,7 @@
 (ert-deftest promptu-compose-empty-list ()
   (should (equal (promptu--compose nil) "")))
 
-;;; Session mutators (R3, R4, R8, KTD1, KTD8)
+;;; Session mutators
 
 (defmacro promptu-test--with-session (&rest body)
   "Run BODY with a fresh, isolated promptu session."
@@ -213,10 +213,10 @@
    (should (null promptu--negate-next))
    (should (null promptu--point))))
 
-;;; Finalize (R9, R11, AE3)
+;;; Finalize
 
 (ert-deftest promptu-finish-inserts-composed-prompt ()
-  "Covers AE3: finish inserts the bulleted prompt at point; kill ring untouched."
+  "Finish inserts the bulleted prompt at point; kill ring untouched."
   (promptu-test--with-session
    (let ((kill-ring nil)
          (promptu-separator "\n- ")
@@ -330,7 +330,7 @@
     (promptu--reset)
     (should (equal (car kill-ring) "previous"))))
 
-;;; Reserved-key collision guard (KTD6)
+;;; Reserved-key collision guard
 
 ;;; Block description with placeholder hints
 
