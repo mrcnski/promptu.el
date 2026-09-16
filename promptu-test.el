@@ -96,6 +96,7 @@
          (promptu--redo-stack nil)
          (promptu--history-index nil)
          (promptu--history-stash nil)
+         (promptu-finish-function #'ignore)
          (promptu-negation-prefix "don't "))
      ,@body))
 
@@ -214,16 +215,46 @@
 
 ;;; Finalize (R9, R11, AE3)
 
-(ert-deftest promptu-finish-copies-composed-prompt ()
-  "Covers AE3: finish places the bulleted prompt on the kill ring."
+(ert-deftest promptu-finish-inserts-composed-prompt ()
+  "Covers AE3: finish inserts the bulleted prompt at point; kill ring untouched."
   (promptu-test--with-session
    (let ((kill-ring nil)
-         (kill-ring-yank-pointer nil)
          (promptu-separator "\n- ")
+         (promptu-finish-function #'promptu-insert)
          (promptu--session '("review your changes" "commit" "don't push")))
-     (promptu--finish)
-     (should (equal (current-kill 0)
-                    "- review your changes\n- commit\n- don't push")))))
+     (with-temp-buffer
+       (insert "before ")
+       (promptu--finish)
+       (should (equal (buffer-string)
+                      "before - review your changes\n- commit\n- don't push")))
+     (should (null kill-ring)))))
+
+(ert-deftest promptu-insert-read-only-falls-back-to-copy ()
+  "A read-only buffer gets nothing inserted; the prompt goes to the kill ring."
+  (let ((kill-ring nil)
+        (kill-ring-yank-pointer nil))
+    (with-temp-buffer
+      (setq buffer-read-only t)
+      (promptu-insert "x")
+      (should (string-empty-p (buffer-string))))
+    (should (equal (car kill-ring) "x"))))
+
+(ert-deftest promptu-agent-shell-submit-outside-shell-inserts ()
+  "Anywhere but an agent-shell buffer, the bundled function is plain insert."
+  (with-temp-buffer
+    (promptu-agent-shell-submit "x")
+    (should (equal (buffer-string) "x"))))
+
+(ert-deftest promptu-agent-shell-submit-in-shell-queues ()
+  "In an agent-shell buffer the prompt goes to `agent-shell-prompt-queue'."
+  (let ((received nil))
+    (cl-letf (((symbol-function 'agent-shell-prompt-queue)
+               (lambda (prompt) (setq received prompt))))
+      (with-temp-buffer
+        (setq major-mode 'agent-shell-mode)
+        (promptu-agent-shell-submit "x")
+        (should (string-empty-p (buffer-string)))))
+    (should (equal received "x"))))
 
 (ert-deftest promptu-finish-empty-no-kill-ring-change ()
   (let ((kill-ring '("previous"))
@@ -245,6 +276,51 @@
      (should (null promptu--session))
      (should (null promptu--point))
      (should (null promptu--undo-stack)))))
+
+(ert-deftest promptu-finish-calls-finish-function ()
+  "RET hands the composed prompt to `promptu-finish-function', then clears."
+  (promptu-test--with-session
+   (let* ((promptu-history nil)
+          (promptu-separator "\n- ")
+          (received nil)
+          (promptu-finish-function (lambda (text) (setq received text))))
+     (promptu--add '(:text "a"))
+     (promptu--add '(:text "b"))
+     (promptu--finish)
+     (should (equal received "- a\n- b"))
+     (should (equal promptu-history '(("a" "b"))))
+     (should (null promptu--session)))))
+
+(ert-deftest promptu-finish-function-error-keeps-session ()
+  "An erroring finish function leaves the draft and history untouched."
+  (promptu-test--with-session
+   (let ((promptu-history nil)
+         (promptu-finish-function (lambda (_) (error "No shell"))))
+     (promptu--add '(:text "a"))
+     (should-error (promptu--finish))
+     (should (equal promptu--session '("a")))
+     (should (null promptu-history)))))
+
+(ert-deftest promptu-finish-copy-ignores-finish-function ()
+  "M-w copies to the kill ring even when RET is customized."
+  (promptu-test--with-session
+   (let ((kill-ring nil)
+         (kill-ring-yank-pointer nil)
+         (promptu-history nil)
+         (promptu-separator "\n- ")
+         (promptu-finish-function (lambda (_) (error "Not called"))))
+     (promptu--add '(:text "a"))
+     (promptu--finish-copy)
+     (should (equal (current-kill 0) "- a"))
+     (should (null promptu--session)))))
+
+(ert-deftest promptu-finish-description ()
+  "RET is labeled by what it does: insert by default, plain finish otherwise."
+  (should (eq (default-value 'promptu-finish-function) #'promptu-insert))
+  (let ((promptu-finish-function #'promptu-insert))
+    (should (equal (promptu--finish-description) "finish (insert)")))
+  (let ((promptu-finish-function #'ignore))
+    (should (equal (promptu--finish-description) "finish"))))
 
 (ert-deftest promptu-abort-leaves-kill-ring-untouched ()
   "Aborting (reset without finish) must not touch the kill ring."
@@ -378,6 +454,7 @@ so users can extend it with (append promptu-default-blocks ...)."
   (should (promptu--reserved-key-p "-"))
   (should (promptu--reserved-key-p "RET"))
   (should (promptu--reserved-key-p "DEL"))
+  (should (promptu--reserved-key-p "M-w"))
   (should (promptu--reserved-key-p "M-e"))
   (should (promptu--reserved-key-p "M-E"))
   (should (promptu--reserved-key-p "M-b"))
@@ -407,6 +484,7 @@ so users can extend it with (append promptu-default-blocks ...)."
          (promptu--session nil)
          (promptu--point nil)
          (promptu--negate-next nil)
+         (promptu-finish-function #'ignore)
          (promptu-negation-prefix "don't ")
          (promptu-separator "\n- "))
      ,@body))

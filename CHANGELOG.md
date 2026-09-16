@@ -15,9 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   read each time the menu opens, so edits take effect on the next open.
 - `M-b` visits the blocks file from the menu.  Shown only when `promptu-blocks`
   names a file.
+- `promptu-finish-function`: configures what `RET` does with the composed
+  prompt, e.g. yank and submit it in an agent shell.
+- `M-w` finishes composing the prompt and copies it to the kill ring.
+- `promptu-agent-shell-submit`: a bundled `promptu-finish-function` for
+  agent-shell.  Submits from the agent-shell buffer under the pont.
 
 ### Changed
 
+- `RET` now inserts the prompt in the buffer the menu was invoked from, instead
+  of copying to the kill ring.
 - In-progress prompts are no longer discarded between invocations.  The session
   is still cleared when the prompt is finished.
 - The block list is laid out in two columns, filled row by row, matching the

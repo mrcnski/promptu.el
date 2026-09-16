@@ -38,8 +38,8 @@
 ;; Pick blocks one at a time using their associated keys.  The transient stays
 ;; open and shows a live preview as the prompt is built.
 ;;
-;; Press `RET` to copy the composed prompt to the kill ring, then paste it into
-;; your agent (e.g. `agent-shell`) or anywhere else.
+;; Press `RET` to insert the composed prompt where you were, e.g. an
+;; `agent-shell` input line, or `M-w` to copy it to the kill ring instead.
 ;;
 ;; See the README for full usage instructions, or just start using promptu!
 ;;
@@ -98,8 +98,8 @@ A constant so it can be extended without retyping it, e.g.
   "Building blocks available in the `promptu' menu.
 
 Either a list of blocks, or the name of a JSON file holding one.  The
-file form is for sharing the list with other promptu frontends. It is
-read every time the menu opens, so edits take effect on the next open..
+file form is for sharing the list with other promptu frontends.  It is
+read every time the menu opens, so edits take effect on the next open.
 See `promptu-blocks-from-json' for the file's format and the seeding of
 a missing file.
 
@@ -163,6 +163,16 @@ loaded from it on first use and saved after each finished prompt.
 Note: composed prompts can include values you typed for placeholders, so
 enabling persistence writes those values to this file in plain text."
   :type '(choice (const :tag "In-memory only" nil) file)
+  :group 'promptu)
+
+(defcustom promptu-finish-function #'promptu-insert
+  "Function called with the composed prompt when it is finished (\\`RET').
+
+Called in the buffer the menu was invoked from.  Set it to hand the
+prompt straight to a frontend, skipping the submit step, e.g.
+`promptu-agent-shell-submit'. \\`M-w' copies to the kill ring
+regardless."
+  :type 'function
   :group 'promptu)
 
 (defcustom promptu-block-label-width 24
@@ -812,23 +822,63 @@ prompt.  A blank buffer leaves the session unchanged."
 
 ;;; Finalize and abort
 
-(defun promptu--finish ()
-  "Copy the composed prompt to the kill ring and report.
-A no-op (no change to the kill ring) when the session is empty."
-  (interactive)
+(defun promptu-copy-to-kill-ring (text)
+  "Copy TEXT to the kill ring.
+Suitable as `promptu-finish-function'."
+  (kill-new text)
+  (message "promptu: copied prompt to kill ring"))
+
+(defun promptu-insert (text)
+  "Insert TEXT at point, or copy it when the buffer is read-only there.
+Suitable as `promptu-finish-function'."
+  (condition-case nil
+      (insert text)
+    ((buffer-read-only text-read-only)
+     (kill-new text)
+     (message "promptu: read-only buffer, copied prompt to kill ring instead"))))
+
+(declare-function agent-shell-prompt-queue "ext:agent-shell-prompt-queue" (prompt))
+
+(defun promptu-agent-shell-submit (text)
+  "Submit TEXT in the current agent-shell buffer, or insert it at point.
+Only an `agent-shell-mode' buffer gets the submit; elsewhere this is
+`promptu-insert'.  If the agent is busy the prompt is queued and sent
+when its turn ends.  Suitable as `promptu-finish-function'."
+  ;; The mode check guarantees agent-shell is loaded, so no `require'.
+  (if (derived-mode-p 'agent-shell-mode)
+      (agent-shell-prompt-queue text)
+    (promptu-insert text)))
+
+(defun promptu--finish-with (function)
+  "Finish by calling FUNCTION with the composed prompt, then clear.
+FUNCTION runs before the session is recorded and cleared, so an error
+keeps the draft.  The reset lives here rather than in `promptu' so that
+quitting the menu keeps the in-progress prompt too."
   (if (null promptu--session)
-      (message "promptu: nothing to copy")
-    (let ((text (promptu--compose promptu--session)))
-      (promptu--history-add promptu--session)
-      (kill-new text)
-      (promptu--reset)
-      (message "promptu: copied prompt to kill ring"))))
+      (message "promptu: nothing to finish")
+    (funcall function (promptu--compose promptu--session))
+    (promptu--history-add promptu--session)
+    (promptu--reset)))
+
+(defun promptu--finish ()
+  "Finish with `promptu-finish-function'."
+  (interactive)
+  (promptu--finish-with promptu-finish-function))
+
+(defun promptu--finish-copy ()
+  "Finish by copying to the kill ring, whatever `promptu-finish-function' is."
+  (interactive)
+  (promptu--finish-with #'promptu-copy-to-kill-ring))
+
+(defun promptu--finish-description (&rest _)
+  "Dynamic label for the \\`RET' suffix."
+  (if (eq promptu-finish-function #'promptu-insert) "finish (insert)" "finish"))
 
 ;;; Transient menu
 
 (defconst promptu--reserved-keys
-  '("-" "RET" "DEL" "M-e" "M-E" "M-b" "M-p" "M-n" "M-r" "C-p" "C-n" "C-/" "C-M-/"
-    "q")
+  '("-" "RET" "M-w" "DEL" "M-e" "M-E" "M-b" "M-p" "M-n" "M-r" "C-p" "C-n" "C-/"
+    "C-M-/" "q")
   "Keys reserved for menu control; block keys must avoid these.")
 
 (defun promptu--reserved-key-p (key)
@@ -1040,7 +1090,10 @@ Edits take effect the next time the menu opens."
     ("M-r" "browse" promptu--history-pick
      :inapt-if-nil promptu-history :transient t)]]
   [:description promptu--preview
-                ("RET" "finish (copy)" promptu--finish :inapt-if-nil promptu--session)]
+   ("RET" promptu--finish
+    :description promptu--finish-description
+    :inapt-if-nil promptu--session)
+   ("M-w" "copy" promptu--finish-copy :inapt-if-nil promptu--session)]
   (interactive)
   ;; A quit keeps the draft for the next invocation. Only the negate flag resets
   ;; on open.

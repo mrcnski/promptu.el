@@ -26,8 +26,9 @@ M-x promptu
 Pick building blocks one at a time. The menu stays open and shows a live preview
 as the prompt is built.
 
-Press `RET` to copy the composed prompt to the kill ring, then paste it into
-your agent (e.g. `agent-shell`) or anywhere else.
+Press `RET` to insert the composed prompt where you were (e.g. `agent-shell`),
+or `M-w` to copy it to the kill ring instead.  To skip the submit step too, see
+[Pasting straight into an agent](#pasting-straight-into-an-agent).
 
 ### Basic Keys
 
@@ -37,8 +38,9 @@ your agent (e.g. `agent-shell`) or anywhere else.
 | `-`       | The next block added is negated                      |
 | `DEL`     | Remove the last entry (or the entry above the point) |
 | `M-e`     | Edit the last entry (or the entry above the point)   |
-| `RET`     | Finish: copy the composed prompt to the kill ring    |
-| `C-g`     | Abort with no output                                 |
+| `RET`     | Finish: insert the prompt at point (or see below)    |
+| `M-w`     | Finish: copy the prompt to the kill ring             |
+| `C-g`     | Quit; keep the in-progress prompt for next time      |
 
 The full set of keys is shown in the transient menu, and should be discoverable
 and self-explanatory.
@@ -173,6 +175,18 @@ Other options:
   `nil` for unbounded history.
 - `promptu-history-file` (default `nil`): where to persist history. When `nil`,
   history lives only in the current Emacs session, like the kill ring.
+
+### Pasting straight into an agent
+
+By default `RET` inserts the prompt at point in the buffer you invoked promptu
+from, leaving you to submit it.  To customize the behavior e.g. also submit
+automatically, point `promptu-finish-function` at a function that takes the
+composed text.  For [agent-shell](https://github.com/xenodium/agent-shell) one
+is bundled:
+
+```elisp
+(setq promptu-finish-function #'promptu-agent-shell-submit)
+```
 
 ### Elisp vs. JSON configuration
 
