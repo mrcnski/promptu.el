@@ -239,6 +239,19 @@
       (should (string-empty-p (buffer-string))))
     (should (equal (car kill-ring) "x"))))
 
+(defun promptu-test--menu-command (key)
+  "Return the command KEY is bound to in the `promptu' menu layout."
+  (plist-get (cdr (transient-get-suffix 'promptu key)) :command))
+
+(ert-deftest promptu-menu-aliases-terminal-function-keys ()
+  "<return> and <backspace> reach the same commands as RET and DEL.
+Terminal buffers bind those raw events, which stops Emacs translating
+them to RET and DEL."
+  (should (eq (promptu-test--menu-command "<return>")
+              (promptu-test--menu-command "RET")))
+  (should (eq (promptu-test--menu-command "<backspace>")
+              (promptu-test--menu-command "DEL"))))
+
 (ert-deftest promptu-agent-shell-submit-outside-shell-inserts ()
   "Anywhere but an agent-shell buffer, the bundled function is plain insert."
   (with-temp-buffer
@@ -455,6 +468,8 @@ so users can extend it with (append promptu-default-blocks ...)."
   (should (promptu--reserved-key-p "RET"))
   (should (promptu--reserved-key-p "DEL"))
   (should (promptu--reserved-key-p "M-w"))
+  (should (promptu--reserved-key-p "<return>"))
+  (should (promptu--reserved-key-p "<backspace>"))
   (should (promptu--reserved-key-p "M-e"))
   (should (promptu--reserved-key-p "M-E"))
   (should (promptu--reserved-key-p "M-b"))

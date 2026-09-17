@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   prompt, e.g. yank and submit it in an agent shell.
 - `M-w` finishes composing the prompt and copies it to the kill ring.
 - `promptu-agent-shell-submit`: a bundled `promptu-finish-function` for
-  agent-shell.  Submits from the agent-shell buffer under the pont.
+  agent-shell.  Submits from the agent-shell buffer under the point.
 
 ### Changed
 
@@ -29,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is still cleared when the prompt is finished.
 - The block list is laid out in two columns, filled row by row, matching the
   Mac app's grid.
+
+### Fixed
+
+- `RET` and `DEL` now work when the menu is opened from a terminal buffer (e.g.
+  ghostel, vterm).
 
 ## [1.1.0] - 2026-08-02
 

@@ -170,7 +170,7 @@ enabling persistence writes those values to this file in plain text."
 
 Called in the buffer the menu was invoked from.  Set it to hand the
 prompt straight to a frontend, skipping the submit step, e.g.
-`promptu-agent-shell-submit'. \\`M-w' copies to the kill ring
+`promptu-agent-shell-submit'.  \\`M-w' copies to the kill ring
 regardless."
   :type 'function
   :group 'promptu)
@@ -877,8 +877,8 @@ quitting the menu keeps the in-progress prompt too."
 ;;; Transient menu
 
 (defconst promptu--reserved-keys
-  '("-" "RET" "M-w" "DEL" "M-e" "M-E" "M-b" "M-p" "M-n" "M-r" "C-p" "C-n" "C-/"
-    "C-M-/" "q")
+  '("-" "RET" "<return>" "M-w" "DEL" "<backspace>" "M-e" "M-E" "M-b" "M-p" "M-n"
+    "M-r" "C-p" "C-n" "C-/" "C-M-/" "q")
   "Keys reserved for menu control; block keys must avoid these.")
 
 (defun promptu--reserved-key-p (key)
@@ -1094,6 +1094,13 @@ Edits take effect the next time the menu opens."
     :description promptu--finish-description
     :inapt-if-nil promptu--session)
    ("M-w" "copy" promptu--finish-copy :inapt-if-nil promptu--session)]
+  ;; Terminal buffers (ghostel, vterm) bind the raw <return> and <backspace>
+  ;; events, which stops Emacs translating them to the RET and DEL bound
+  ;; above.  Alias them, hidden, so the menu works from those buffers.
+  [:hide always
+   ("<return>" "finish" promptu--finish :inapt-if-nil promptu--session)
+   ("<backspace>" "remove" promptu--remove-entry
+    :inapt-if-not promptu--target-entry :transient t)]
   (interactive)
   ;; A quit keeps the draft for the next invocation. Only the negate flag resets
   ;; on open.
