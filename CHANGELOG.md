@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-18
+
 ### Added
 
 - `promptu-block-label-width`: labels longer than it are truncated with an
@@ -69,5 +71,6 @@ Initial release.
   (`promptu-history-max`).
 - Runtime check for the minimum required transient version.
 
+[1.2.0]: https://github.com/mrcnski/promptu.el/releases/tag/v1.2.0
 [1.1.0]: https://github.com/mrcnski/promptu.el/releases/tag/v1.1.0
 [1.0.0]: https://github.com/mrcnski/promptu.el/releases/tag/v1.0.0

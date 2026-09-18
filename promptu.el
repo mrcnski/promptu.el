@@ -6,7 +6,7 @@
 ;; Assisted-by: Claude:claude-opus-4-8
 ;; Assisted-by: Claude:claude-fable-5
 ;; Assisted-by: Claude:claude-fable-5-1
-;; Version: 1.1.0
+;; Version: 1.2.0
 ;; Package-Requires: ((emacs "28.1") (transient "0.5.0"))
 ;; Keywords: convenience, tools
 ;; URL: https://github.com/mrcnski/promptu.el
